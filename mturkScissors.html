@@ -1,0 +1,44 @@
+<html>
+<head>
+<title>Intelligent Scissors</title>
+
+<script src="scissors/scissorsClient.js"></script>
+<script src="scissors/scissors.js"></script>
+
+<script>
+scs = new Scissors();
+</script>
+</head>
+
+<body onload="scs.init(document.getElementById('scissors_img'))">
+<h2>Intelligent Scissors:</h2>
+
+<div>
+    Status:
+    <output id="output"></output>
+</div>
+
+<input type="button" onclick="scs.stopDrawing()" value="Stop Drawing" />
+<input type="button" onclick="scs.clearLines()" value="Clear Lines" />
+<input type="button" onclick="scs.undo()" value="Undo" />
+
+<!--
+	Algorithm output will be added to the form with this id on a call to
+	scs.submitScissors(). add other input fields (hidden or otherwise) as
+	necessary
+-->
+<form id='scissors_form' method="post" onsubmit="return scs.submitScissors();" style="display: inline-block">
+	<input type="submit" value="Submit" />
+</form>
+
+<!-- Container for the algorithm's output. The ID is important. -->
+<div id="container" style="position: relative">
+    <img src="test_img.jpg" style="display: none;" id="scissors_img" />
+    <!-- Test photo courtesy photos-public-domain.com -->
+    
+    <!-- Canvas elements will be created here programically. -->
+</div>
+
+</div>
+</body>
+</html>

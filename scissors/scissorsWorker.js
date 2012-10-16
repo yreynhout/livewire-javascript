@@ -34,6 +34,8 @@ Point.prototype.toString = function() {
 };
 //// End Point class ////
 
+// Temporary fix to deal with memory issues.
+var MAX_IMAGE_SIZE_FOR_TRAINING = 1000*1000;
 
 //function computeFixedCost(gradient, laplace) {
 // var fixedCost = new Array()
@@ -446,14 +448,22 @@ Scissors.prototype.setData = function(data) {
 	this.status(PROCESSING_STR + " 5/6");
 	//this.gradDir = computeGradDirection(this.gradX, this.gradY);
 	//this.status(PROCESSING_STR + " 6/7");
-	var sides = computeSides(this.edgeWidth, this.gradX, this.gradY, this.greyscale);
-	this.status(PROCESSING_STR + " 7/6");
-	this.inside = sides.inside;
-	this.outside = sides.outside;
-	this.edgeTraining = new Array();
-	this.gradTraining = new Array();
-	this.insideTraining = new Array();
-	this.outsideTraining = new Array();
+	
+	if ( this.width * this.height <= MAX_IMAGE_SIZE_FOR_TRAINING ) {
+		var sides = computeSides(this.edgeWidth, this.gradX, this.gradY, this.greyscale);
+		this.status(PROCESSING_STR + " 7/6");
+		this.inside = sides.inside;
+		this.outside = sides.outside;
+		this.edgeTraining = new Array();
+		this.gradTraining = new Array();
+		this.insideTraining = new Array();
+		this.outsideTraining = new Array();
+	}
+	
+	this.cost = new Array();
+	for ( var y = 0; y < this.height; y++ ) {
+		this.cost[y] = new Array();
+	}
 };
 
 Scissors.prototype.findTrainingPoints = function(p) {
@@ -475,6 +485,10 @@ Scissors.prototype.resetTraining = function() {
 };
 
 Scissors.prototype.doTraining = function(p) {
+	if ( this.width * this.height > MAX_IMAGE_SIZE_FOR_TRAINING ) {
+		return;
+	}
+	
 	// Compute training weights and measures
 	this.trainingPoints = this.findTrainingPoints(p);
 
@@ -630,9 +644,7 @@ Scissors.prototype.setPoint = function(sp) {
 		this.parents[y] = new Array();
 	}
 
-	this.cost = new Array();
 	for ( var y = 0; y < this.height; y++ ) {
-		this.cost[y] = new Array();
 		for ( var x = 0; x < this.width; x++ ) {
 			this.cost[y][x] = Number.MAX_VALUE;
 		}

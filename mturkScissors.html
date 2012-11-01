@@ -1,35 +1,105 @@
+<!doctype html>
 <html>
 <head>
 <title>Intelligent Scissors</title>
 
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+<style>
+#container {
+	padding: 0 3px;
+}
+</style>
+
 <script src="scissors/scissorsClient.js"></script>
 <script src="scissors/scissors.js"></script>
+<script src="scissors/point.js"></script>
+<script src="scissors/maskDrawing.js"></script>
 
 <script>
-scs = new Scissors();
+if (typeof $ == 'undefined') {
+	$ = function(id) {return document.getElementById(id);};
+}
+
+masker = new Masker();
+image_id = "scissors_img";
+scs = null;
+image = null;
+container = null;
+
+function loaded() {
+	image = document.getElementById(image_id);
+	container = document.getElementById('container');
+	
+	startMasking();
+}
+
+function setMaskingButtonsDisabled(value) {
+	$('finish-mask').disabled = value;
+	$('reset-mask').disabled = value;
+}
+
+function startMasking() {
+	if ( scs ) {
+		scs.destroy();
+		scs = null;
+	}
+	
+	masker.setUp(container, image);
+	setMaskingButtonsDisabled(false);
+	$('masker-controls').style.display = 'block';
+	$('scissors-controls').style.display = 'none';
+}
+
+function endMasking() {
+	$('output').innerHTML = 'Calculating mask...'
+	setMaskingButtonsDisabled(true);
+	
+	mask = masker.getMask();
+	
+	if ( !mask ) {
+		$('output').innerHTML = "You need to mark some pixels"
+		setMaskingButtonsDisabled(false);
+	} else {
+		masker.tearDown();
+		$('masker-controls').style.display = 'none';
+		$('scissors-controls').style.display = 'block';
+		scs = new Scissors();
+		scs.init(image, mask, false);
+	}
+}
 </script>
 </head>
 
-<body onload="scs.init(document.getElementById('scissors_img'))">
+<body onload="loaded()">
 <h2>Intelligent Scissors:</h2>
 
 <div>
     Status:
-    <output id="output"></output>
+    <output id="output">Draw Mask</output>
 </div>
 
-<input type="button" onclick="scs.stopDrawing()" value="Stop Drawing" />
-<input type="button" onclick="scs.clearLines()" value="Clear Lines" />
-<input type="button" onclick="scs.undo()" value="Undo" />
+<div id="masker-controls">
+	<!-- Add 0 delay so that button appears responsive. -->
+	<input id="finish-mask" type="button" onclick="setTimeout(function() {endMasking();}, 0);" value="Done Masking"/>
+	<input id="reset-mask" type="button" onclick="masker.clearMask()" value="Reset Mask"/>
+</div>
+<div id="scissors-controls" style="display: none;">
+	<input type="button" onclick="scs.stopDrawing()" value="Stop Drawing"/>
+	<input type="button" onclick="scs.clearLines()" value="Clear Lines"/>
+	<input type="button" onclick="scs.undo()" value="Undo"/>
+	<!--
+		Algorithm output will be added to the form with this id on a call to
+		scs.submitScissors(). add other input fields (hidden or otherwise) as
+		necessary
+	-->
+	<form id='scissors_form' method="post" onsubmit="return scs.submitScissors();" style="display: inline-block">
+		<input type="submit" value="Submit" />
+	</form>
+	
+	&mdash; <input type="button" onclick="startMasking()" value="Retry Masking"/>
+</div>
 
-<!--
-	Algorithm output will be added to the form with this id on a call to
-	scs.submitScissors(). add other input fields (hidden or otherwise) as
-	necessary
--->
-<form id='scissors_form' method="post" onsubmit="return scs.submitScissors();" style="display: inline-block">
-	<input type="submit" value="Submit" />
-</form>
 
 <!-- Container for the algorithm's output. The ID is important. -->
 <div id="container" style="position: relative">

@@ -7,7 +7,7 @@
 if ( this.importScripts != undefined ) {
 	// We're running this script in a Web Worker, so set up environment
 	
-	importScripts("bucketQueue.js", "scissorsServer.js");
+	importScripts("bucketQueue.js", "scissorsServer.js", "point.js");
 
 	var scissorsServer = new ScissorsServer(new Scissors()); // Protocol object
 	onmessage = function(event) {
@@ -15,342 +15,32 @@ if ( this.importScripts != undefined ) {
 	};
 }
 
-//// Begin Point class ////
-function Point(x,y) {
-	this.x = x;
-	this.y = y;
+if ( !Number.prototype.equals ) {
+	// Needed for the BucketQueue
+	Number.prototype.equals = function(other) {
+		if ( !other ) {
+			return false;
+		}
+		
+		return this.valueOf() == other.valueOf();
+	};
 }
-
-Point.prototype.equals = function(q) {
-	if ( !q ) {
-		return false;
-	}
-
-	return (this.x == q.x) && (this.y == q.y);
-};
-
-Point.prototype.toString = function() {
-	return "(" + this.x + ", " + this.y + ")";
-};
-//// End Point class ////
 
 // Temporary fix to deal with memory issues.
 var MAX_IMAGE_SIZE_FOR_TRAINING = 1000*1000;
 
-//function computeFixedCost(gradient, laplace) {
-// var fixedCost = new Array()
-
-// for (var y = 0; y < gradient.length; y++) {
-// fixedCost[y] = new Array()
-
-// for (var x = 0; x < gradient[y].length; x++) {
-// fixedCost[y][x] = 0.5 * (gradient[y][x] + laplace[y][x])
-// }
-// }
-
-// return fixedCost
-//}
-
-function computeGreyscale(data, width, height) {
-	// Returns 2D augmented array containing greyscale data
-	// Greyscale values found by averaging color channels
-	// Input should be in a flat RGBA array, with values between 0 and 255
-	var greyscale = new Array();
-
-	// Compute actual values
-	for (var y = 0; y < height; y++) {
-		greyscale[y] = new Array();
-
-		for (var x = 0; x < width; x++) {
-			var p = (y*width + x)*4;
-			greyscale[y][x] = (data[p] + data[p+1] + data[p+2]) / (3*255);
-		}
-	}
-
-	// Augment with convenience functions
-	greyscale.dx = function(x,y) {
-		if ( x+1 == this[y].length ) {
-			// If we're at the end, back up one
-			x--;
-		}
-
-		return this[y][x+1] - this[y][x];
-	};
-
-	greyscale.dy = function(x,y) {
-		if ( y+1 == this.length ) {
-			// If we're at the end, back up one
-			y--;
-		}
-
-		return this[y][x] - this[y+1][x];
-	};
-
-	greyscale.gradMagnitude = function(x,y) {
-		var dx = this.dx(x,y); var dy = this.dy(x,y);
-		return Math.sqrt(dx*dx + dy*dy);
-	};
-
-	greyscale.laplace = function(x,y) { 
-		// Laplacian of Gaussian
-		var lap = -16 * this[y][x];
-		lap += this[y-2][x];
-		lap += this[y-1][x-1] + 2*this[y-1][x] + this[y-1][x+1];
-		lap += this[y][x-2]   + 2*this[y][x-1] + 2*this[y][x+1] + this[y][x+2];
-		lap += this[y+1][x-1] + 2*this[y+1][x] + this[y+1][x+1];
-		lap += this[y+2][x];
-
-		// var lap =  0
-		// lap -= this[y-1][x-1] + this[y-1][x] + this[y-1][x+1]
-		// lap -= this[ y ][x-1] - 8*this[y][x] + this[ y ][x+1]
-		// lap -= this[y+1][x-1] + this[y+1][x] + this[y+1][x+1]
-
-		return lap;
-	};
-
-	return greyscale;
-}
-
-function computeGradient(greyscale) {
-	// Returns a 2D array of gradient magnitude values for greyscale. The values
-	// are scaled between 0 and 1, and then flipped, so that it works as a cost
-	// function.
-	var gradient = new Array();
-
-	max = 0; // Maximum gradient found, for scaling purposes
-
-	for (var y = 0; y < greyscale.length-1; y++) {
-		gradient[y] = new Array();
-
-		for (var x = 0; x < greyscale[y].length-1; x++) {
-			gradient[y][x] = greyscale.gradMagnitude(x,y);
-			max = Math.max(gradient[y][x], max);
-		}
-
-		gradient[y][greyscale[y].length-1] = gradient[y][greyscale.length-2];
-	}
-
-	gradient[greyscale.length-1] = new Array();
-	for (var i = 0; i < gradient[0].length; i++) {
-		gradient[greyscale.length-1][i] = gradient[greyscale.length-2][i];
-	}
-
-	// Flip and scale.
-	for (var y = 0; y < gradient.length; y++) {
-		for (var x = 0; x < gradient[y].length; x++) {
-			gradient[y][x] = 1 - (gradient[y][x] / max);
-		}
-	}
-
-	return gradient;
-}
-
-function computeLaplace(greyscale) {
-	// Returns a 2D array of Laplacian of Gaussian values
-	var laplace = new Array();
-
-	// Make the edges low cost here.
-
-	laplace[0] = new Array();
-	laplace[1] = new Array();
-	for (var i = 1; i < greyscale.length; i++) {
-		// Pad top, since we can't compute Laplacian
-		laplace[0][i] = 1;
-		laplace[1][i] = 1;
-	}
-
-	for (var y = 2; y < greyscale.length-2; y++) {
-		laplace[y] = new Array();
-		// Pad left, ditto
-		laplace[y][0] = 1;
-		laplace[y][1] = 1;
-
-		for (var x = 2; x < greyscale[y].length-2; x++) {
-			// Threshold needed to get rid of clutter.
-			laplace[y][x] = (greyscale.laplace(x,y) > 0.33) ? 0 : 1;
-		}
-
-		// Pad right, ditto
-		laplace[y][greyscale[y].length-2] = 1;
-		laplace[y][greyscale[y].length-1] = 1;
-	}
-	
-	laplace[greyscale.length-2] = new Array();
-	laplace[greyscale.length-1] = new Array();
-	for (var i = 1; i < greyscale.length; i++) {
-		// Pad bottom, ditto
-		laplace[greyscale.length-2][i] = 1;
-		laplace[greyscale.length-1][i] = 1;
-	}
-
-	return laplace;
-}
-
-function computeGradX(greyscale) {
-	// Returns 2D array of x-gradient values for greyscale
-	var gradX = new Array();
-
-	for ( var y = 0; y < greyscale.length; y++ ) {
-		gradX[y] = new Array();
-
-		for ( var x = 0; x < greyscale[y].length-1; x++ ) {
-			gradX[y][x] = greyscale.dx(x,y);
-		}
-
-		gradX[y][greyscale[y].length-1] = gradX[y][greyscale[y].length-2];
-	}
-
-	return gradX;
-}
-
-function computeGradY(greyscale) {
-	// Returns 2D array of y-gradient values for greyscale
-	var gradY = new Array();
-
-	for (var y = 0; y < greyscale.length-1; y++) {
-		gradY[y] = new Array();
-
-		for ( var x = 0; x < greyscale[y].length; x++ ) {
-			gradY[y][x] = greyscale.dy(x,y);
-		}
-	}
-
-	gradY[greyscale.length-1] = new Array();
-	for ( var i = 0; i < greyscale[0].length; i++ ) {
-		gradY[greyscale.length-1][i] = gradY[greyscale.length-2][i];
-	}
-
-	return gradY;
-}
-
-function gradUnitVector(gradX, gradY, px, py, out) {
-	// Returns the gradient vector at (px,py), scaled to a magnitude of 1
-	var ox = gradX[py][px]; var oy = gradY[py][px];
-
-	var gvm = Math.sqrt(ox*ox + oy*oy);
-	gvm = Math.max(gvm, 1e-100); // To avoid possible divide-by-0 errors
-
-	out.x = ox / gvm;
-	out.y = oy / gvm;
-}
-
-// Pre-created to reduce allocation in inner loops
-var __dgpuv = new Point(-1, -1); var __gdquv = new Point(-1, -1);
-
-function gradDirection(gradX, gradY, px, py, qx, qy) {
-	// Compute the gradiant direction, in radians, between to points
-	gradUnitVector(gradX, gradY, px, py, __dgpuv);
-	gradUnitVector(gradX, gradY, qx, qy, __gdquv);
-
-	var dp = __dgpuv.y * (qx - px) - __dgpuv.x * (qy - py);
-	var dq = __gdquv.y * (qx - px) - __gdquv.x * (qy - py);
-
-	// Make sure dp is positive, to keep things consistant
-	if (dp < 0) {
-		dp = -dp; dq = -dq;
-	}
-
-	if ( px != qx && py != qy ) {
-		// We're going diagonally between pixels
-		dp *= Math.SQRT1_2;
-		dq *= Math.SQRT1_2;
-	}
-
-	return gradDirection._2_3_PI * (Math.acos(dp) + Math.acos(dq));
-}
-gradDirection._2_3_PI = (2 / (3 * Math.PI)); // Precompute'd
-
-//Not currently used.
-function computeGradDirection(gradX, gradY) {
-	var gradDirMat = new Array();
-
-	for ( var dy = -1; dy <= 1; dy++ ) {
-		gradDirMat[dy+1] = new Array();
-
-		for ( var dx = -1; dx <= 1; dx++ ) {
-			if ( dx == 0 && dy == 0 ) {
-				// p == q
-				continue;
-			}
-
-			gradDirMat[dy+1][dx+1] = computeGradDirectionFor(gradX, gradY, dx, dy);
-		}
-	}
-
-	return gradDirMat;
-}
-
-//Not currently used.
-function computeGradDirectionFor(gradX, gradY, dx, dy) {
-	var gradDirMatFor = new Array();
-
-	var endY = Math.min(gradX.length, gradX.length + dy);
-	for ( var y = Math.max(0, -dy); y+dy < endY; y++ ) {
-		gradDirMatFor[y] = new Array();
-
-		var endX = Math.min(gradX[y].length, gradX[y].length + dx);
-		for ( var x = Math.max(0, -dx); x+dx < endX; x++ ) {
-			gradDirMatFor[y][x] = gradDirection(gradX, gradY, x, y, x+dx, y+dy);
-		}
-	}
-
-	return gradDirMatFor;
-}
-
-function computeSides(dist, gradX, gradY, greyscale) {
-	// Returns 2 2D arrays, containing inside and outside greyscale values.
-	// These greyscale values are the intensity just a little bit along the
-	// gradient vector, in either direction, from the supplied point. These
-	// values are used when using active-learning Intelligent Scissors
-	
-	var sides = new Object();
-	sides.inside = new Array();
-	sides.outside = new Array();
-
-	var guv = new Point(-1, -1); // Current gradient unit vector
-
-	for ( var y = 0; y < gradX.length; y++ ) {
-		sides.inside[y] = new Array();
-		sides.outside[y] = new Array();
-
-		for ( var x = 0; x < gradX[y].length; x++ ) {
-			//console.log(gradX.length + " " + gradY.length + " " + new Point(x,y) + " " + guv);
-
-			gradUnitVector(gradX, gradY, x, y, guv);
-
-			//console.log(guv + "= (" + guv.x + ", " + guv.y + ")");
-
-			//(x, y) rotated 90 = (y, -x)
-
-			var ix = Math.round(x + dist*guv.y);
-			var iy = Math.round(y - dist*guv.x);
-			var ox = Math.round(x - dist*guv.y);
-			var oy = Math.round(y + dist*guv.x);
-
-			ix = Math.max(Math.min(ix, gradX[y].length-1), 0);
-			ox = Math.max(Math.min(ox, gradX[y].length-1), 0);
-			iy = Math.max(Math.min(iy, gradX.length-1), 0);
-			oy = Math.max(Math.min(oy, gradX.length-1), 0);
-
-			sides.inside[y][x] = greyscale[iy][ix];
-			sides.outside[y][x] = greyscale[oy][ox];
-		}
-	}
-
-	return sides;
-}
-
-//// Begin Scissors class ////
+////Begin Scissors class ////
 function Scissors() {
 	this.server = null;
 
 	this.width = -1;
 	this.height = -1;
+	this.mask = null;
 
 	this.curPoint = null; // Corrent point we're searching on.
 	this.searchGranBits = 8; // Bits of resolution for BucketQueue.
 	this.searchGran = 1 << this.earchGranBits; //bits.
-	this.pointsPerPost = 500;
+	this.pointsPerPost = 1000;
 
 	// Precomputed image data. All in ranges 0 >= x >= 1 and all inverted (1 - x).
 	this.greyscale = null; // Greyscale of image
@@ -385,6 +75,284 @@ function Scissors() {
 	this.outsideTraining = null;
 	// End Training
 }
+
+Scissors.prototype.dx = function(x,y) {
+	var width = this.width;
+	var grey = this.greyscale;
+	
+	if ( x+1 == width ) {
+		// If we're at the end, back up one
+		x--;
+	}
+
+	return grey[index(y, x+1, width)] - grey[index(y, x, width)];
+};
+
+Scissors.prototype.dy = function(x,y) {
+	var width = this.width;
+	var grey = this.greyscale;
+	
+	if ( y+1 == grey.length / width ) {
+		// If we're at the end, back up one
+		y--;
+	}
+
+	return grey[index(y, x, width)] - grey[index(y+1, x, width)];
+};
+
+Scissors.prototype.gradMagnitude = function(x,y) {
+	var dx = this.dx(x,y); var dy = this.dy(x,y);
+	return Math.sqrt(dx*dx + dy*dy);
+};
+
+Scissors.prototype.lap = function(x,y) { 
+	// Laplacian of Gaussian
+	var width = this.width;
+	var grey = this.greyscale;
+	
+	function index(y, x) {
+		return y*width + x;
+	}
+	
+	var lap = -16 * grey[index(y, x)];
+	lap += grey[index(y-2, x)];
+	lap += grey[index(y-1, x-1)] + 2*grey[index(y-1, x)] + grey[index(y-1, x+1)];
+	lap += grey[index(y, x-2)]   + 2*grey[index(y, x-1)] + 2*grey[index(y, x+1)] + grey[index(y, x+2)];
+	lap += grey[index(y+1, x-1)] + 2*grey[index(y+1, x)] + grey[index(y+1, x+1)];
+	lap += grey[index(y+2, x)];
+	
+	return lap;
+};
+
+Scissors.prototype.computeGradient = function() {
+	// Returns a 2D array of gradient magnitude values for greyscale. The values
+	// are scaled between 0 and 1, and then flipped, so that it works as a cost
+	// function.
+	var greyscale = this.greyscale;
+	var mask = this.mask;
+	
+	var gradient = new Float32Array(greyscale.length);
+	var width = this.width;
+	
+	var max = 0; // Maximum gradient found, for scaling purposes
+
+	for (var y = 0; y < greyscale.length / width; y++) {
+		for (var x = 0; x < width; x++) {
+			var p = index(y, x, width);
+			if ( mask && !mask[p] ) {
+				continue;
+			}
+			
+			var grad = this.gradMagnitude(x,y);
+			gradient[p] = grad;
+			max = Math.max(grad, max);
+		}
+	}
+
+//	gradient[greyscale.length-1] = new Array();
+//	for (var i = 0; i < gradient[0].length; i++) {
+//		gradient[greyscale.length-1][i] = gradient[greyscale.length-2][i];
+//	}
+
+	// Flip and scale.
+	for (var i = 0; i < gradient.length; i++) {
+			gradient[i] = 1 - (gradient[i] / max);
+	}
+	
+	return gradient;
+};
+
+Scissors.prototype.computeLaplace = function() {
+	// Returns a 2D array of Laplacian of Gaussian values
+	var greyscale = this.greyscale;
+	var mask = this.mask;
+	
+	var laplace = new Float32Array(greyscale.length);
+	var width = this.width;
+
+	function index(i, j) {
+		return i*width + j;
+	}
+	
+	// Make the edges low cost here.
+
+	var height = greyscale.length / width;
+	
+	for (var i = 1; i < width; i++) {
+		// Pad top, since we can't compute Laplacian
+		laplace[index(0, i)] = 1;
+		laplace[index(1, i)] = 1;
+	}
+
+	for (var y = 2; y < height-2; y++) {
+		laplace[y] = new Array();
+		// Pad left, ditto
+		laplace[index(y, 0)] = 1;
+		laplace[index(y, 1)] = 1;
+
+		for (var x = 2; x < width-2; x++) {
+			p = index(y, x);
+			
+			if ( mask && !mask[p] ) {
+				continue;
+			}
+			
+			// Threshold needed to get rid of clutter.
+			laplace[p] = (this.lap(x,y) > 0.33) ? 0 : 1;
+		}
+
+		// Pad right, ditto
+		laplace[index(y, width-2)] = 1;
+		laplace[index(y, width-1)] = 1;
+	}
+	
+	for (var i = 1; i < width; i++) {
+		// Pad bottom, ditto
+		laplace[index(greyscale.length-2, i)] = 1;
+		laplace[index(greyscale.length-1, i)] = 1;
+	}
+
+	return laplace;
+};
+
+Scissors.prototype.computeGradX = function() {
+	// Returns 2D array of x-gradient values for greyscale
+	var greyscale = this.greyscale;
+	var mask = this.mask;
+	
+	var gradX = new Float32Array(greyscale.length);
+	var width = this.width;
+
+	for ( var y = 0; y < greyscale.length / width; y++ ) {
+		for ( var x = 0; x < width; x++ ) {
+			p = index(y, x, width);
+			if ( mask && !mask[p] ) {
+				continue;
+			}
+			
+			gradX[p] = this.dx(x,y);
+		}
+	}
+
+	return gradX;
+};
+
+Scissors.prototype.computeGradY = function() {
+	// Returns 2D array of x-gradient values for greyscale
+	var greyscale = this.greyscale;
+	var mask = this.mask;
+	
+	var gradY = new Float32Array(greyscale.length);
+	var width = this.width;
+
+	for ( var y = 0; y < greyscale.length / width; y++ ) {
+		for ( var x = 0; x < width; x++ ) {
+			p = index(y, x, width);
+			if ( mask && !mask[p] ) {
+				continue;
+			}
+			
+			gradY[p] = this.dy(x,y);
+		}
+	}
+
+	return gradY;
+};
+
+Scissors.prototype.gradUnitVector = function(px, py, out) {
+	var gradX = this.gradX;
+	var gradY = this.gradY;
+	var width = this.width;
+	
+	// Returns the gradient vector at (px,py), scaled to a magnitude of 1
+	var ox = gradX[index(py, px, width)]; var oy = gradY[index(py, px, width)];
+
+	var gvm = Math.sqrt(ox*ox + oy*oy);
+	gvm = Math.max(gvm, 1e-100); // To avoid possible divide-by-0 errors
+
+	out.x = ox / gvm;
+	out.y = oy / gvm;
+};
+
+// Pre-created to reduce allocation in inner loops
+var __dgpuv = new Point(-1, -1); var __gdquv = new Point(-1, -1);
+
+Scissors.prototype.gradDirection = function(px, py, qx, qy) {
+	// Compute the gradiant direction, in radians, between to points
+	this.gradUnitVector(px, py, __dgpuv);
+	this.gradUnitVector(qx, qy, __gdquv);
+
+	var dp = __dgpuv.y * (qx - px) - __dgpuv.x * (qy - py);
+	var dq = __gdquv.y * (qx - px) - __gdquv.x * (qy - py);
+
+	// Make sure dp is positive, to keep things consistant
+	if (dp < 0) {
+		dp = -dp; dq = -dq;
+	}
+
+	if ( px != qx && py != qy ) {
+		// We're going diagonally between pixels
+		dp *= Math.SQRT1_2;
+		dq *= Math.SQRT1_2;
+	}
+
+	return Scissors._2_3_PI * (Math.acos(dp) + Math.acos(dq));
+};
+Scissors._2_3_PI = (2 / (3 * Math.PI)); // Precompute'd
+
+Scissors.prototype.computeSides = function() {
+	// Returns 2 2D arrays, containing inside and outside greyscale values.
+	// These greyscale values are the intensity just a little bit along the
+	// gradient vector, in either direction, from the supplied point. These
+	// values are used when using active-learning Intelligent Scissors
+	var greyscale = this.greyscale;
+	var mask = this.mask;
+	var gradX = this.gradX;
+	var gradY = this.gradY;
+	var dist = this.edgeWidth;
+	
+	var sides = new Object();
+	sides.inside = new Float32Array(greyscale.length);
+	sides.outside = new Float32Array(greyscale.length);
+
+	var guv = new Point(-1, -1); // Current gradient unit vector
+
+	var width = this.width;
+	var height = gradX.length / width;
+	
+	for ( var y = 0; y < height; y++ ) {
+		for ( var x = 0; x < width; x++ ) {
+			p = index(y, x, width);
+			
+			if ( mask && !mask[p] ) {
+				continue;
+			}
+			
+			//console.log(gradX.length + " " + gradY.length + " " + new Point(x,y) + " " + guv);
+
+			this.gradUnitVector(gradX, gradY, x, y, guv);
+
+			//console.log(guv + "= (" + guv.x + ", " + guv.y + ")");
+
+			//(x, y) rotated 90 = (y, -x)
+
+			var ix = Math.round(x + dist*guv.y);
+			var iy = Math.round(y - dist*guv.x);
+			var ox = Math.round(x - dist*guv.y);
+			var oy = Math.round(y + dist*guv.x);
+
+			ix = Math.max(Math.min(ix, width-1), 0);
+			ox = Math.max(Math.min(ox, width-1), 0);
+			iy = Math.max(Math.min(iy, height-1), 0);
+			oy = Math.max(Math.min(oy, height-1), 0);
+
+			sides.inside[p] = greyscale[index(iy, ix, width)];
+			sides.outside[p] = greyscale[index(oy, ox, width)];
+		}
+	}
+
+	return sides;
+};
 
 Scissors.prototype.setWorking = function(working) {
 	// Sets working flag and informs DOM side
@@ -429,51 +397,47 @@ Scissors.prototype.setDimensions = function(width, height) {
 	this.height = height;
 };
 
-Scissors.prototype.setData = function(data) {
+Scissors.prototype.setData = function(greyscale, mask) {
 	if ( this.width == -1 || this.height == -1 ) {
 		// The width and height should have already been set
 		throw new Error("Dimensions have not been set.");
 	}
+	
+	this.mask = mask;
+	this.greyscale = greyscale;
 
-	this.status(PROCESSING_STR + " 0/6");
-	this.greyscale = computeGreyscale(data, this.width, this.height);
 	this.status(PROCESSING_STR + " 1/6");
-	this.laplace = computeLaplace(this.greyscale);
+	this.laplace = this.computeLaplace();
 	this.status(PROCESSING_STR + " 2/6");
-	this.gradient = computeGradient(this.greyscale);
+	this.gradient = this.computeGradient();
 	this.status(PROCESSING_STR + " 3/6");
-	this.gradX = computeGradX(this.greyscale);
+	this.gradX = this.computeGradX();
 	this.status(PROCESSING_STR + " 4/6");
-	this.gradY = computeGradY(this.greyscale);
+	this.gradY = this.computeGradY();
 	this.status(PROCESSING_STR + " 5/6");
 	//this.gradDir = computeGradDirection(this.gradX, this.gradY);
 	//this.status(PROCESSING_STR + " 6/7");
 	
 	if ( this.width * this.height <= MAX_IMAGE_SIZE_FOR_TRAINING ) {
-		var sides = computeSides(this.edgeWidth, this.gradX, this.gradY, this.greyscale);
+		var sides = this.computeSides();
 		this.status(PROCESSING_STR + " 7/6");
 		this.inside = sides.inside;
 		this.outside = sides.outside;
-		this.edgeTraining = new Array();
-		this.gradTraining = new Array();
-		this.insideTraining = new Array();
-		this.outsideTraining = new Array();
-	}
-	
-	this.cost = new Array();
-	for ( var y = 0; y < this.height; y++ ) {
-		this.cost[y] = new Array();
+		this.edgeTraining = new Float32Array();
+		this.gradTraining = new Float32Array();
+		this.insideTraining = new Float32Array();
+		this.outsideTraining = new Float32Array();
 	}
 };
 
 Scissors.prototype.findTrainingPoints = function(p) {
 	// Grab the last handful of points for training
-	var points = new Array();
+	var points = new Uint32Array();
 
 	if ( this.parents != null ) {
 		for ( var i = 0; i < this.trainingLength && p; i++ ) {
 			points.push(p);
-			p = this.parents[p.y][p.x];
+			p = this.parents[p];
 		}
 	}
 
@@ -521,7 +485,7 @@ Scissors.prototype.calculateTraining = function(buffer, granularity, input, outp
 	var maxVal = 1;
 	for ( var i = 0; i < this.trainingPoints.length; i++ ) {
 		var p = this.trainingPoints[i];
-		var idx = this.getTrainingIdx(granularity, input[p.y][p.x]);
+		var idx = this.getTrainingIdx(granularity, input[p]);
 		buffer[idx] += 1;
 
 		maxVal = Math.max(maxVal, buffer[idx]);
@@ -558,30 +522,28 @@ Scissors.prototype.addInStaticGrad = function(have, need) {
 	}
 };
 
-Scissors.prototype.gradDirection = function(px, py, qx, qy) {
-	// return this.gradDir[(qy-py) + 1][(qx-px) + 1][py][px];
-
-	return gradDirection(this.gradX, this.gradY, px, py, qx, qy);
-};
-
-Scissors.prototype.dist = function(px, py, qx, qy) {
+Scissors.prototype.dist = function(p, q) {
 	// The grand culmunation of most of the code: the weighted distance function
-	var grad =  this.gradient[qy][qx];
+	var width = this.width;
+	var px = p % width; var py = Math.round(p / width);
+	var qx = q % width; var qy = Math.round(q / width);
 
+	var grad =  this.gradient[q];
+	
 	if ( px == qx || py == qy ) {
 		// The distance is Euclidean-ish; non-diagonal edges should be shorter
 		grad *= Math.SQRT1_2;
 	}
 
-	var lap = this.laplace[qy][qx];
+	var lap = this.laplace[q];
 	var dir = this.gradDirection(px, py, qx, qy);
 
 	if ( this.trained ) {
 		// Apply training magic
 		var gradT = this.getTrainedGrad(grad);
-		var edgeT = this.getTrainedEdge(this.greyscale[py][px]);
-		var insideT = this.getTrainedInside(this.inside[py][px]);
-		var outsideT = this.getTrainedOutside(this.outside[py][px]);
+		var edgeT = this.getTrainedEdge(this.greyscale[p]);
+		var insideT = this.getTrainedInside(this.inside[p]);
+		var outsideT = this.getTrainedOutside(this.outside[p]);
 
 		return 0.3*gradT + 0.3*lap + 0.1*(dir + edgeT + insideT + outsideT);
 	} else {
@@ -593,32 +555,20 @@ Scissors.prototype.dist = function(px, py, qx, qy) {
 Scissors.prototype.adj = function(p) {
 	var list = new Array();
 
-	// list[0] = new Point(p.x - 1, p.y - 1);
-	// list[1] = new Point(p.x    , p.y - 1);
-	// list[2] = new Point(p.x + 1, p.y - 1);
-
-	// list[3] = new Point(p.x - 1, p.y    );
-	// list[4] = new Point(p.x + 1, p.y    );
-
-	// list[5] = new Point(p.x - 1, p.y + 1);
-	// list[6] = new Point(p.x    , p.y + 1);
-	// list[7] = new Point(p.x + 1, p.y + 1);
-
-	// var sx = Math.max(p.x-1, 0, this.curPoint.x - this.searchSize);
-	// var sy = Math.max(p.y-1, 0, this.curPoint.y - this.searchSize);
-	// var ex = Math.min(p.x+1, this.greyscale[0].length-1, this.curPoint.x + this.searchSize);
-	// var ey = Math.min(p.y+1, this.greyscale.length-1, this.curPoint.y + this.searchSize);
-
-	var sx = Math.max(p.x-1, 0);
-	var sy = Math.max(p.y-1, 0);
-	var ex = Math.min(p.x+1, this.greyscale[0].length-1);
-	var ey = Math.min(p.y+1, this.greyscale.length-1);
+	var width = this.width;
+	var px = p % width; var py = Math.floor(p / width);
+	
+	var sx = Math.max(px-1, 0);
+	var sy = Math.max(py-1, 0);
+	var ex = Math.min(px+1, width-1);
+	var ey = Math.min(py+1, this.height-1);
 
 	var idx = 0;
 	for ( var y = sy; y <= ey; y++ ) {
 		for ( var x = sx; x <= ex; x++ ) {
-			if ( x != p.x || y != p.y ) {
-				list[idx++] = new Point(x,y);
+			flat = index(y, x, width);
+			if ( (x != px || y != py) && (!this.mask || this.mask[flat]) ) {
+				list[idx++] = flat;
 			}
 		}
 	}
@@ -629,35 +579,25 @@ Scissors.prototype.adj = function(p) {
 Scissors.prototype.setPoint = function(sp) {
 	this.setWorking(true);
 
-	this.curPoint = sp;
+	// Can't use sp.index(), since this object was JSON-ified.
+	this.curPoint = index(sp.y, sp.x, this.width);
 
-	this.visited = new Array();
-	for ( var y = 0; y < this.height; y++ ) {
-		this.visited[y] = new Array();
-		for ( var x = 0; x < this.width; x++ ) {
-			this.visited[y][x] = false;
-		}
-	}
+	this.visited = new Uint8Array(this.greyscale.length);
+	this.parents = new Uint32Array(this.greyscale.length);
 
-	this.parents = new Array();
-	for ( var y = 0; y < this.height; y++ ) {
-		this.parents[y] = new Array();
-	}
-
-	for ( var y = 0; y < this.height; y++ ) {
-		for ( var x = 0; x < this.width; x++ ) {
-			this.cost[y][x] = Number.MAX_VALUE;
-		}
+	this.cost = new Float32Array(this.greyscale.length);
+	for ( var i = 0; i < this.greyscale.length; i++ ) {
+		this.cost[i] = Infinity;
 	}
 
 	this.pq = new BucketQueue(this.searchGranBits, function(p) {
-		return Math.round(this.searchGran * this.costArr[p.y][p.x]);
+		return Math.round(this.searchGran * this.costArr[p]);
 	});
 	this.pq.searchGran = this.searchGran;
 	this.pq.costArr = this.cost;
 
-	this.pq.push(sp);
-	this.cost[sp.y][sp.x] = 0;
+	this.pq.push(new Number(this.curPoint));
+	this.cost[this.curPoint] = 0;
 };
 
 Scissors.prototype.doWork = function() {
@@ -666,44 +606,43 @@ Scissors.prototype.doWork = function() {
 	}
 
 	this.timeout = null;
-
+	
 	var pointCount = 0;
 	var newPoints = new Array();
 	while ( !this.pq.isEmpty() && pointCount < this.pointsPerPost ) {
-		var p = this.pq.pop();
+		var p = this.pq.pop().valueOf();
 		newPoints.push(p);
-		newPoints.push(this.parents[p.y][p.x]);
+		newPoints.push(this.parents[p]);
 
-		this.visited[p.y][p.x] = true;
+		this.visited[p] = true;
 
 		var adjList = this.adj(p);
 		for ( var i = 0; i < adjList.length; i++) {
 			var q = adjList[i];
 
-			var pqCost = this.cost[p.y][p.x] + this.dist(p.x, p.y, q.x, q.y);
-
-			if ( pqCost < this.cost[q.y][q.x] ) {
-				if ( this.cost[q.y][q.x] != Number.MAX_VALUE ) {
+			var pqCost = this.cost[p] + this.dist(p, q);
+			if ( pqCost < this.cost[q] ) {
+				if ( this.cost[q] != Number.Infinity ) {
 					// Already in PQ, must remove it so we can re-add it.
-					this.pq.remove(q);
+					this.pq.remove(new Number(q));
 				}
 
-				this.cost[q.y][q.x] = pqCost;
-				this.parents[q.y][q.x] = p;
-				this.pq.push(q);
+				this.cost[q] = pqCost;
+				this.parents[q] = p;
+				this.pq.push(new Number(q));
 			}
 		}
 
 		pointCount++;
 	}
 
+	if ( this.server && this.working ) {
+		this.server.postResults(newPoints);
+	}
+
 	if ( this.pq.isEmpty() ) {
 		this.setWorking(false);
 		this.status(READY_STR);
-	}
-
-	if ( this.server && this.working ) {
-		this.server.postResults(newPoints);
 	}
 
 	return newPoints;

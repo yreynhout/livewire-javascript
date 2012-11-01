@@ -3,9 +3,11 @@
 function Scissors() {
 
 // Member variables
-var _this = this // For event functions.
+var _this = this; // For event functions.
 
-this.lineColor = new Array(255, 0, 0, 255);
+this.lineColor = "red"; //new Array(255, 0, 0, 255);
+this.fadeColor = "white";
+this.fadeAlpha = 0.5;
 
 this.output = null; // Element to stick output text
 
@@ -42,11 +44,11 @@ this.createCanvas = function(id, zIndex) {
 	var imageNode = this.img;
 
 	var canvas = document.createElement("canvas");
-	canvas.id = id
+	canvas.id = id;
 	canvas.width = imageNode.width;
 	canvas.height = imageNode.height;
 	
-	var style = canvas.style
+	var style = canvas.style;
 	style.position = "absolute";
 	style.top = "0px";
 	style.left = "0px";
@@ -55,33 +57,20 @@ this.createCanvas = function(id, zIndex) {
 	if ( imageNode.nextSibling ) {
 		imageNode.parentNode.insertBefore(canvas, imageNode.nextSibling);
 	} else {
-		imageNode.parentNode.appendChild(canvas)
+		imageNode.parentNode.appendChild(canvas);
 	}
 	
 	return canvas;
-}
+};
 
 // Converts absolute coordinates to canvas coordinates.
-this.getCanvasPoint = function(canvas, x, y) {
-	var p = new Point(0, 0);
-	
-	// Compute canvas offset.
-	var element = this.image_canvas;
-	while (element) {
-		p.x += element.offsetLeft;
-		p.y += element.offsetTop;
-		element = element.offsetParent;
-	}
-
-	p.x = x - p.x + window.pageXOffset;
-	p.y = y - p.y + window.pageYOffset;
-
-	return p;
-}
+this.getCanvasPoint = function(x, y) {
+	return getRelativePoint(this.image_canvas, x, y);
+};
 
 // Initializes everything, creates all of the canvases, and starts the Web
 // Workers.
-this.init = function(img) {
+this.init = function(img, mask, visualize) {
 	this.img = img;
 	
 	this.trainCheck = document.getElementById("trainCheck");
@@ -108,6 +97,12 @@ this.init = function(img) {
 	this.scissorsWorker.onstatus = function(msg) {
 		_this.output.textContent = msg;
 	};
+
+	var drawFromPoint = null;
+	var drawData = null;
+	if ( visualize ) {
+		this.line_ctx.strokeRect(mask.aoi[0], mask.aoi[1], mask.aoi[2], mask.aoi[3]);
+	}
 	
 	this.scissorsWorker.ondata = function(data) {
 		if ( _this.isDrawing && !_this.exampleLineDrawn && _this.mousePoint ) {
@@ -116,10 +111,31 @@ this.init = function(img) {
 			// ...and we can draw that path.
 			if ( _this.scissorsWorker.hasPathFor(_this.mousePoint) ) {
 				// Draw it!
-				var imageData = _this.scratch_ctx.createImageData(scratch_canvas.width, scratch_canvas.height);
-				_this.drawPathFrom(_this.mousePoint, imageData);
-				_this.scratch_ctx.putImageData(imageData, 0, 0);
+				_this.updatePreview();
 			}
+		}
+		
+		if ( visualize ) {
+			if (drawFromPoint != this.curPoint) {
+				drawData = _this.line_ctx.getImageData(0,0, _this.image_canvas.width, _this.image_canvas.height);
+				drawFromPoint = this.curPoint;
+			}
+			
+			for ( var i = 0; i < data.length; i += 2 ) {
+				q = data[i+1];
+	
+				if ( !q ) {
+					continue;
+				}
+				
+				idx = (q.y*drawData.width + q.x) * 4;
+				
+				drawData.data[idx] = 255;
+				drawData.data[idx+1] = 0;
+				drawData.data[idx+2] = 255;
+				drawData.data[idx+3] = 255;
+			}
+			_this.line_ctx.putImageData(drawData, 0, 0);
 		}
 	};
 	
@@ -129,16 +145,57 @@ this.init = function(img) {
 		throw new Error(event.message + " (" + event.filename + ":" + event.lineno + ")");
 	};
 	
-	var imageData = this.image_ctx.getImageData(0,0, this.image_canvas.width, this.image_canvas.height);
+	if ( mask ) {
+		this.mask = mask.points;
+		this.aoi = mask.aoi;
+	}
 	
-	this.scissorsWorker.setImageData(imageData);
+	this.scissorsWorker.setImageData(this.image_ctx, this.aoi, this.mask);
+	
+	if ( mask && mask.image ) {
+		this.fadeImage(mask.image);
+	}
 	
 	this.scratch_canvas.addEventListener("mousemove", this.mouseMove, false);
 	this.scratch_canvas.addEventListener("mousedown", this.mouseClick, true);
 	this.scratch_canvas.addEventListener("contextmenu", function (event) {
 		event.preventDefault();
 	});
-}
+};
+
+this.fadeImage = function(image) {
+	var aoi = this.aoi;
+	var fade = this.createCanvas("tempFade", -100);
+	fadeCtx = fade.getContext('2d');
+
+	fadeCtx.globalCompositeOperation = "xor";
+	fadeCtx.fillStyle = this.fadeColor;
+	fadeCtx.fillRect(0, 0, fade.width, fade.height);
+	fadeCtx.drawImage(image, aoi[0], aoi[1], aoi[2], aoi[3]); // Subtract mask
+	
+	var image_ctx = this.image_ctx;
+	image_ctx.save();
+	image_ctx.globalAlpha = this.fadeAlpha;
+	this.image_ctx.drawImage(fade, 0, 0, fade.width, fade.height);
+	image_ctx.restore();
+	
+	fade.parentNode.removeChild(fade);
+};
+
+this.destroy = function() {
+	var container = this.img.parentNode;
+	var children = container.childNodes;
+	var idx = 0;
+	while ( children.length > 1 ) {
+		if ( children[idx].id != image_id ) {
+			container.removeChild(children[idx]);
+		} else {
+			idx++;
+		}
+	}
+	
+	this.scissorsWorker.destroy();
+};
 
 // Aborts the current computation and stops showing potential paths
 this.stopDrawing = function() {
@@ -153,13 +210,13 @@ this.stopDrawing = function() {
 	}
 	
 	this.start = null;
-}
+};
 
 // Puts this object in the drawing state
 this.drawing = function(p) {
 	this.isDrawing = true;
 	this.start = p;
-}
+};
 
 // Deletes all of the saved lines so far
 this.clearLines = function() {
@@ -168,13 +225,13 @@ this.clearLines = function() {
 	this.line_ctx.clearRect(0, 0, this.line_canvas.width, this.line_canvas.height);
 	
 	this.start = null;
-}
+};
 
 // Updates whether the algorithm should do live training, according to the
 // trainCheck's value
 this.setTraining = function() {
 	this.scissorsWorker.setTraining(this.trainCheck.value);
-}
+};
 
 // Returns true if the last path saved is closed (i.e., its last point is
 // equal to its first).
@@ -187,76 +244,85 @@ this.isClosed = function() {
 	} else {
 		return false;
 	}
-}
+};
 
 // Returns whether the supplied path is closed
 this.isPathClosed = function(path) {
 	return path.length > 0
 		&& this.getFirstPoint(path).equals(this.getLastPoint(path));
-}
+};
 
 // Set to true, and the algorithm will not allow the user to submit without
 // drawing a closed path, or add a new path once one is closed
 this.setRequiresClosed = function(req) {
 	this.reqClosed = req;
-}
+};
 
 this.requiresClosed = function() {
 	return this.reqClosed;
-}
+};
 
 // Returns true if the supplied point is considered to be over the start point
 // of the current path
 this.isOverStart = function(p) {
 	return this.start && this.start.dist(p) < this.startPointSize;
-}
+};
 
 // Returns the last point in the supplied path (array of subpaths)
 this.getLastPoint = function(path) {
 	return path[path.length-1][0];
-}
+};
 
 // Returns the first point in the supplied path (array of subpaths)
 this.getFirstPoint = function(path) {
 	return path[0][path[0].length-1];
-}
+};
 
 // Attempts to snap the supplied point to either the starting point or a point
 // with high gradient magnitude.
 this.snapPoint = function(p) {
-	var gradient = this.scissorsWorker.gradient; // Inverted gradient.
-	
 	if ( this.requiresClosed() && this.isOverStart(p) ) {
 		return this.start; // We're close enough to snap to start
 	}
 	
-	if ( gradient == null ) {
-		return p; // Don't have enough data to snap to anything else.
-	}
+	var sx = p.x-this.snapSize;
+	var sy = p.y-this.snapSize;
+	var ex = p.x+this.snapSize;
+	var ey = p.y+this.snapSize;
 	
-	var sx = Math.max(0, p.x-this.snapSize);
-	var sy = Math.max(0, p.y-this.snapSize);
-	var ex = Math.min(gradient.width-1, p.x+this.snapSize);
-	var ey = Math.min(gradient.height-1, p.y+this.snapSize);
-	
-	var maxGrad = gradient[p.y][p.x];
+	var maxGrad = this.scissorsWorker.getInvertedGradient(p);
 	var maxPoint = p;
+	var testPoint = new Point();
 	for ( var y = sy; y <= ey; y++ ) {
+		testPoint.y = y;
 		for ( var x = sx; x <= ex; x++ ) {
-			if ( gradient[y][x] < maxGrad ) {
-				maxGrad = gradient[y][x];
-				maxPoint.x = x; maxPoint.y = y;
+			testPoint.x = x;
+			
+			grad = this.scissorsWorker.getInvertedGradient(testPoint);
+			if ( grad < maxGrad ) {
+				maxGrad = grad;
+				maxPoint.x = testPoint.x; maxPoint.y = testPoint.y;
 			}
 		}
 	}
 	
 	return maxPoint;
-}
+};
+
+this.inAoi = function(p) {
+	var aoi = this.aoi;
+	return !aoi || (p.x >= aoi[0] && p.x - aoi[0] <= aoi[2]
+	             && p.y >= aoi[1] && p.y - aoi[1] <= aoi[3]);
+};
 
 // Captures mouse clicks and either updates the path, starts a new one, and/or
 // finishes the current one.
 this.mouseClick = function(event) {
-	var p = _this.getCanvasPoint(_this.scratch_canvas, event.clientX, event.clientY);
+	var p = _this.getCanvasPoint(event.clientX, event.clientY);
+
+	if ( !_this.inAoi(p) ) {
+		return;
+	}
 	
 	if ( !event.ctrlKey ) {
 		p = _this.snapPoint(p);
@@ -272,10 +338,8 @@ this.mouseClick = function(event) {
 		if ( _this.isDrawing && _this.scissorsWorker.hasPathFor(p) ) {
 			// If we're drawing, and the chosen point has it's path calculated
 			// add path to point and continue
-			var imageData = _this.line_ctx.getImageData(0, 0, _this.line_canvas.width, _this.line_canvas.height);
-			_this.drawPathFrom(p, imageData);
 			_this.appendPath(p, _this.currentPath);
-			_this.line_ctx.putImageData(imageData, 0, 0);
+			_this.redrawPaths();
 			
 			_this.scissorsWorker.setPoint(p);
 		}
@@ -288,7 +352,7 @@ this.mouseClick = function(event) {
 			_this.redrawPaths();
 		} else if ( !_this.isDrawing ) {
 			if ( _this.requiresClosed() && _this.isClosed() ) {
-				window.alert('Path is already closed. Click "Undo" or "Clear Lines" to change the path.')
+				window.alert('Path is already closed. Click "Undo" or "Clear Lines" to change the path.');
 			}
 			
 			// Start drawing new segment
@@ -297,59 +361,68 @@ this.mouseClick = function(event) {
 			_this.scissorsWorker.setPoint(p);
 		}
 	}
-}
+};
 
 // Captures mouse movement and updates preview paths accordingly 
 this.mouseMove = function(event) {
 	if ( _this.isDrawing ) {
-		var p = _this.getCanvasPoint(scratch_canvas, event.clientX, event.clientY);
-		//start = getSearchPoint(start);
+		var p = _this.getCanvasPoint(event.clientX, event.clientY);
+		
+		if ( !_this.inAoi(p) ) {
+			return;
+		}
 		
 		if ( !event.ctrlKey ) {
 			p = _this.snapPoint(p);
 		}
 		
 		_this.mousePoint = p;
-		_this.exampleLineDrawn = _this.scissorsWorker.hasPathFor(_this.mousePoint);
-		
-		var imageData = _this.scratch_ctx.createImageData(_this.scratch_canvas.width, _this.scratch_canvas.height);
-		_this.drawPathFrom(p, imageData);
-		_this.scratch_ctx.putImageData(imageData, 0, 0);
-		
-		_this.overStart = _this.isOverStart(p)
-		_this.drawStart();
+		_this.updatePreview();
 	}
-}
+};
 
-// Draws a line from the supplied point to the start point onto the supplied
-// ImageData object.
-this.drawPathFrom = function(p, imageData) {
+this.updatePreview = function() {
+	this.exampleLineDrawn = _this.scissorsWorker.hasPathFor(_this.mousePoint);
+	
+	_this.scratch_ctx.clearRect(0, 0, _this.scratch_canvas.width, _this.scratch_canvas.height);
+	this.drawPathFrom(this.mousePoint, _this.scratch_ctx);
+	
+	this.overStart = _this.isOverStart(this.mousePoint);
+	this.drawStart();
+};
+
+//Draws a line from the supplied point to the start point onto the supplied
+//context.
+this.drawPathFrom = function(p, imageCtx) {
 	var subpath = this.scissorsWorker.getPathFrom(p);
 	
-	for ( var i = 0; i < subpath.length; i++ ) {
-		var idx = (subpath[i].y*imageData.width + subpath[i].x)*4;
-		
-		// Set pixel color
-		for ( var j = 0; j < 4; j++ ) {
-			imageData.data[idx+j] = this.lineColor[j];
-		}
+	if (subpath.length < 2) {
+		return;
 	}
-}
+	
+	imageCtx.strokeStyle = this.lineColor;
+	imageCtx.beginPath();
+	imageCtx.moveTo(subpath[0].x, subpath[1].y);
+	for ( var i = 1; i < subpath.length; i++ ) {
+		imageCtx.lineTo(subpath[i].x, subpath[i].y);
+	}
+	imageCtx.stroke();
+};
 
-// Draws the supplied path onto the ImageData object.
-this.drawPath = function(path, imageData) {
+// Draws the supplied path onto the context.
+this.drawPath = function(path, imageCtx) {
+	imageCtx.strokeStyle = this.lineColor;
+	
 	for ( var i = 0; i < path.length; i++ ) { // Iterate over subpaths
-		for ( var j = 0; j < path[i].length; j++ ) { // and points.
-			var p = path[i][j];
-			idx = (p.y*imageData.width + p.x)*4; // 4 bytes per pixel
-			
-			// Set pixel color
-			for ( var k = 0; k < 4; k++ ) {
-				imageData.data[idx+k] = this.lineColor[k];
-			}
+		var subpath = path[i];
+		imageCtx.beginPath();
+		imageCtx.moveTo(subpath[0].x, subpath[0].y);
+		for ( var j = 0; j < subpath.length; j++ ) { // and points.
+			imageCtx.lineTo(subpath[j].x, subpath[j].y);
 		}
+		imageCtx.stroke();
 	}
-}
+};
 
 // Draws a circle representing the starting point of the current path.
 this.drawStart = function() {
@@ -359,14 +432,14 @@ this.drawStart = function() {
 		this.line_ctx.fill();
 		this.line_ctx.stroke();
 	}
-}
+};
 
 // Appends the subpath from the supplied point to the previous clicked point to
 // the supplied path array
 this.appendPath = function(p, path) {
 	subpath = this.scissorsWorker.getPathFrom(p);
 	path.push(subpath);
-}
+};
 
 // Bresenham's algorithm for constructing a straight line between two points.
 // Thank you, Phrogz, from StackOverflow.
@@ -403,7 +476,7 @@ this.getLine = function(p, q) {
 	
 	line.push(new Point(px, py));
 	return line;
-}
+};
 
 // Undoes the previously commited line
 this.undo = function() {
@@ -429,40 +502,39 @@ this.undo = function() {
 	}
 	
 	this.redrawPaths();
-}
+};
 
 // Redraws everything except the image canvas
 this.redrawPaths = function() {
-	// Create fresh canvas
-	var imageData = this.line_ctx.createImageData(this.line_canvas.width, this.line_canvas.height);
+	// Clear canvas
+	var line_ctx = this.line_ctx;
+	line_ctx.clearRect(0, 0, this.line_canvas.width, this.line_canvas.height);
 	
 	for ( var i = 0; i < this.paths.length; i++ ) { // Iterate over paths...
 		// and draw
-		this.drawPath(this.paths[i], imageData);
+		this.drawPath(this.paths[i], line_ctx);
 	}
 
 	// Redraw start point and current path
 	if ( this.currentPath && this.currentPath.length > 0 ) {
-		var subpath = this.currentPath[0];
-		this.drawPath(this.currentPath, imageData);
+		this.drawPath(this.currentPath, line_ctx);
 	}
 	
-	this.line_ctx.putImageData(imageData, 0, 0);
 	this.drawStart(); // Must draw straight to canvas
-}
+};
 
 // Completely replaces the paths array
 this.setPaths = function(paths) {
 	this.stopDrawing();
 	this.paths = paths;
 	this.redrawPaths();
-}
+};
 
 // Attempts to encode the current paths array and add it to the scissors_form
 // form object.
 this.submitScissors = function() {
 	if ( this.requiresClosed() && !this.isClosed() ) {
-		window.alert("Outline must form a complete loop, which it currently doesn't.")
+		window.alert("Outline must form a complete loop, which it currently doesn't.");
 		return false; // Cancel submission
 	}
 	
@@ -476,7 +548,7 @@ this.submitScissors = function() {
 	
 	form.appendChild(pathInput);
 	return true;
-}
+};
 
 }
 

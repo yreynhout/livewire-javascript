@@ -99,10 +99,10 @@ ScissorsServer.prototype._processDimensionMessage = function(data) {
 };
 
 ScissorsServer.prototype._processImageMessage = function(data) {
-	this._processDimensionMessage(data.imageData);
+	this._processDimensionMessage(data);
 	this.status(PROCESSING_STR);
 	this.setWorking(true);
-	this.scissors.setData(data.imageData.data);
+	this.scissors.setData(data.imageData, data.mask);
 	this.setWorking(false);
 	this._postGradientMessage(this.scissors.gradient);
 	this.status(READY_STR);

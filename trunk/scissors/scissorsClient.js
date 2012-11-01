@@ -1,28 +1,7 @@
 
-function Point(x,y) {
-	this.x = x;
-	this.y = y;
-}
-
-Point.prototype.equals = function(q) {
-	if ( !q ) {
-		return false;
-	}
-	
-	return (this.x == q.x) && (this.y == q.y);
-};
-
-Point.prototype.toString = function() {
-	 return "(" + this.x + ", " + this.y + ")";
-};
-
-Point.prototype.dist = function(p) {
-	return Math.sqrt(Math.pow(this.x-p.x,2) + Math.pow(this.y-p.y,2));
-}
-
 function Message(msgType) {
 	this.msgType = msgType;
-};
+}
 
 Message.GRADIENT  = -4;
 Message.RESULTS   = -3;
@@ -73,15 +52,59 @@ function ScissorsWorker(scissorsURL) {
 	};
 }
 
+ScissorsWorker.prototype.destroy = function() {
+	this.gradient = null;
+	this.parentPoints = null;
+	this.worker.terminate();
+};
+
+ScissorsWorker.prototype.toWorkerSpace = function(p) {
+	return translate(p, -this.aoi[0], -this.aoi[1]);
+};
+
+ScissorsWorker.prototype.toImageSpace = function(p) {
+	return translate(p, this.aoi[0], this.aoi[1]);
+};
+
 ScissorsWorker.prototype.setTraining = function(train) {
 	this._postTrainMessage(train);
 };
 
-ScissorsWorker.prototype.setImageData = function(imageData) {
-	this.width = imageData.width;
-	this.height = imageData.height;
+
+ScissorsWorker.prototype.computeGreyscale = function(data) {
+	// Returns 2D augmented array containing greyscale data
+	// Greyscale values found by averaging color channels
+	// Input should be in a flat RGBA array, with values between 0 and 255
+	var greyscale = new Float32Array(data.length / 4);
+
+	for (var i = 0; i < data.length; i += 4) {
+		greyscale[i/4] = (data[i] + data[i+1] + data[i+2]) / (3*255);
+	}
 	
-	this._postImageMessage(imageData);
+	return greyscale;
+};
+
+ScissorsWorker.prototype.setImageData = function(image, aoi, mask) {
+	var imageData;
+	if ( aoi ) {
+		// AOI is supplied so image should be a 2D Context.
+		this.aoi = aoi;
+		imageData = image.getImageData(aoi[0], aoi[1], aoi[2], aoi[3]);
+	} else {
+		// AOI is not supplied, so image should be an ImageData.
+		this.aoi = [0, 0, image.width, image.height];
+		imageData = image;
+	}
+	
+	var grey = this.computeGreyscale(imageData.data);
+
+	if ( !mask ) {
+		mask = null;
+	}
+	
+	this.width = aoi[2];
+	this.height = aoi[3];
+	this._postImageMessage(grey, mask);
 };
 
 ScissorsWorker.prototype.setPoint = function(p) {
@@ -89,7 +112,7 @@ ScissorsWorker.prototype.setPoint = function(p) {
 	this._resetParentPoints();
 	this.processing = true;
 	
-	this._postPointMessage(p);
+	this._postPointMessage(this.toWorkerSpace(p));
 };
 
 ScissorsWorker.prototype.hasPoint = function() {
@@ -100,24 +123,44 @@ ScissorsWorker.prototype.getPoint = function() {
 	return this.curPoint;
 };
 
+ScissorsWorker.prototype.getInvertedGradient = function(p) {
+	p = this.toWorkerSpace(p);
+	
+	if ( !this.gradient ) {
+		return Infinity;
+	}
+	
+	if ( p.x < 0 || p.x >= this.width ||
+	     p.y < 0 || p.y >= this.height  ) {
+		return Infinity;
+	}
+	
+	return this.gradient[p.index(this.width)];
+};
+
 ScissorsWorker.prototype.getParentPoint = function(p) {
-	return this.parentPoints[p.y][p.x];
+	aoi = this.aoi;
+	p = this.toWorkerSpace(p);
+	return this.toImageSpace(this.parentPoints[p.index(this.width)]);
 };
 
 ScissorsWorker.prototype.getPathFrom = function(p) {
-	subpath = new Array();
+	var subpath = new Array();
+	var width = this.width;
 	
-	while (p) {
-		subpath.push(new Point(p.x, p.y));
-		p = this.getParentPoint(p);
+	p = this.toWorkerSpace(p);
+	var pi = index(p.y, p.x, width);
+	while (pi) {
+		subpath.push(this.toImageSpace(fromIndex(pi, width)));
+		pi = this.parentPoints[pi];
 	}
 	
 	return subpath;
-}
+};
 
 ScissorsWorker.prototype.hasPathFor = function(p) {
 	return !!this.getParentPoint(p);
-}
+};
 
 ScissorsWorker.prototype.getParentInfo = function() {
 	return this.parentPoints;
@@ -142,10 +185,6 @@ ScissorsWorker.prototype.postMessage = function(event) {
 
 ScissorsWorker.prototype._resetParentPoints = function() {
 	this.parentPoints = new Array();
-	
-	for ( var i = 0; i < this.height; i++ ) {
-		this.parentPoints[i] = new Array();
-	}
 };
 
 ScissorsWorker.prototype._processMessage = function(event) {
@@ -176,13 +215,19 @@ ScissorsWorker.prototype._processResultsMessage = function(data) {
 	
 	this._postContinueMessage(); // Pipe clear for next batch.
 	
+	var width = this.width;
+	
 	var results = data.results;
 	for ( var i = 0; i < results.length; i += 2 ) {
-		var p = results[i]; var q = results[i+1];
-		this.parentPoints[p.y][p.x] = q;
+		var p = results[i];
+		var q = results[i+1];
+		this.parentPoints[p] = q;
+		
+		results[i] = this.toImageSpace(fromIndex(p, width));
+		results[i+1] = this.toImageSpace(fromIndex(q, width));
 	}
 	
-	this.ondata(this.parentPoints);
+	this.ondata(results);
 };
 
 ScissorsWorker.prototype._processGradientMessage = function(data) {
@@ -209,9 +254,12 @@ ScissorsWorker.prototype._postContinueMessage = function() {
 	this.worker.postMessage(Message.CONTINUE_MESSAGE);
 };
 
-ScissorsWorker.prototype._postImageMessage = function(data) {
+ScissorsWorker.prototype._postImageMessage = function(data, mask) {
 	var msg = new Message(Message.IMAGE);
-	msg.imageData = data; // Chrome can only post entire ImageData object
+	msg.imageData = data;
+	msg.mask = mask;
+	msg.width = this.width;
+	msg.height = this.height;
 	this.worker.postMessage(msg);
 };
 

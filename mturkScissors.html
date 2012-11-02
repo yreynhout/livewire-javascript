@@ -6,8 +6,52 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 
 <style>
+body {
+	margin-left: 0;
+	padding-top: 33px;
+}
+
+.content {
+	margin-left: 8px;
+}
+
 #container {
 	padding: 0 3px;
+}
+
+.control-bar {
+	position: fixed;
+	top: 0;
+	width: 100%;
+	padding: 5px 8px;
+	z-index: 100;
+	
+	box-sizing:border-box;
+	-moz-box-sizing:border-box; /* Firefox */
+	-webkit-box-sizing:border-box; /* Safari */
+
+	background-color: #EEEEEE;
+	
+	border-bottom: 1px solid black;
+}
+
+.controls-displayed {
+	display: inline-block;
+}
+
+.controls-hidden {
+	display: none;
+}
+
+.status {
+	display: inline-block;
+	margin-left: 5px;
+	vertical-align: middle;
+}
+
+.title {
+	float: right;
+	margin: 0;
 }
 </style>
 
@@ -39,6 +83,14 @@ function setMaskingButtonsDisabled(value) {
 	$('reset-mask').disabled = value;
 }
 
+function hideControls(id) {
+	$(id).className = 'controls-hidden';
+}
+
+function showControls(id) {
+	$(id).className = 'controls-displayed';
+}
+
 function startMasking() {
 	if ( scs ) {
 		scs.destroy();
@@ -47,8 +99,8 @@ function startMasking() {
 	
 	masker.setUp(container, image);
 	setMaskingButtonsDisabled(false);
-	$('masker-controls').style.display = 'block';
-	$('scissors-controls').style.display = 'none';
+	showControls('masker-controls');
+	hideControls('scissors-controls');
 }
 
 function endMasking() {
@@ -62,8 +114,8 @@ function endMasking() {
 		setMaskingButtonsDisabled(false);
 	} else {
 		masker.tearDown();
-		$('masker-controls').style.display = 'none';
-		$('scissors-controls').style.display = 'block';
+		hideControls('masker-controls');
+		showControls('scissors-controls');
 		scs = new Scissors();
 		scs.init(image, mask, false);
 	}
@@ -72,42 +124,47 @@ function endMasking() {
 </head>
 
 <body onload="loaded()">
-<h2>Intelligent Scissors:</h2>
 
-<div>
-    Status:
-    <output id="output">Draw Mask</output>
-</div>
+<section class="content">
+	<div id="container" style="position: relative">
+		<!-- Container for the algorithm's output. The ID is important. -->
+		
+	    <img src="test_img.jpg" style="display: none;" id="scissors_img" />
+	    <!-- Test photo courtesy photos-public-domain.com -->
+	    
+	    <!-- Canvas elements will be created here programically. -->
+	</div>
+</section>
 
-<div id="masker-controls">
-	<!-- Add 0 delay so that button appears responsive. -->
-	<input id="finish-mask" type="button" onclick="setTimeout(function() {endMasking();}, 0);" value="Done Masking"/>
-	<input id="reset-mask" type="button" onclick="masker.clearMask()" value="Reset Mask"/>
-</div>
-<div id="scissors-controls" style="display: none;">
-	<input type="button" onclick="scs.stopDrawing()" value="Stop Drawing"/>
-	<input type="button" onclick="scs.clearLines()" value="Clear Lines"/>
-	<input type="button" onclick="scs.undo()" value="Undo"/>
-	<!--
-		Algorithm output will be added to the form with this id on a call to
-		scs.submitScissors(). add other input fields (hidden or otherwise) as
-		necessary
-	-->
-	<form id='scissors_form' method="post" onsubmit="return scs.submitScissors();" style="display: inline-block">
-		<input type="submit" value="Submit" />
-	</form>
+<div class="control-bar">
+	<span id="masker-controls" class="controls-hidden">
+		<!-- Add 0 delay so that button appears responsive. -->
+		<input id="finish-mask" type="button" onclick="setTimeout(function(){endMasking();}, 0);" value="Done Masking"/>
+		<input id="reset-mask" type="button" onclick="masker.clearMask()" value="Reset Mask"/>
+	</span>
+	<span id="scissors-controls" class="controls-hidden">
+		<input type="button" onclick="scs.stopDrawing()" value="Stop Drawing"/>
+		<input type="button" onclick="scs.clearLines()" value="Clear Lines"/>
+		<input type="button" onclick="scs.undo()" value="Undo"/>
+		<!--
+			Algorithm output will be added to the form with this id on a call to
+			scs.submitScissors(). add other input fields (hidden or otherwise) as
+			necessary
+		-->
+		<form id='scissors_form' method="post" onsubmit="return scs.submitScissors();" style="display: inline-block">
+			<input type="submit" value="Submit" />
+		</form>
+		
+		&mdash; <input type="button" onclick="startMasking()" value="Retry Masking"/>
+	</span>
+	<span class="status">
+	    Status:
+	    <output id="output">Draw Mask</output>
+	</span>
 	
-	&mdash; <input type="button" onclick="startMasking()" value="Retry Masking"/>
+	<h3 class="title">Intelligent Scissors</h3>
 </div>
 
-
-<!-- Container for the algorithm's output. The ID is important. -->
-<div id="container" style="position: relative">
-    <img src="test_img.jpg" style="display: none;" id="scissors_img" />
-    <!-- Test photo courtesy photos-public-domain.com -->
-    
-    <!-- Canvas elements will be created here programically. -->
-</div>
 
 </div>
 </body>

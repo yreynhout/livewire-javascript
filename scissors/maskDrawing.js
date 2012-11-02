@@ -163,8 +163,8 @@ Masker.prototype.getMask = function() {
 	// First determine area of interest
 	var sx = this.width, sy = this.height, ex = 0, ey = 0;
 
-	// Add scaled value to radius for margin to avoid edge artifacts
-	var margin = this.radius/2 + Math.max(scaleX, scaleY);
+	// Add 1 to radius for margin to avoid edge artifacts in the shortest-paths tree
+	var margin = this.radius + 1;
 	
 	// Iterate over line end points to find bounding box
 	for ( var i = 0; i < points.length; i++ ) {

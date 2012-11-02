@@ -311,8 +311,10 @@ this.snapPoint = function(p) {
 
 this.inAoi = function(p) {
 	var aoi = this.aoi;
+	var mask = this.mask;
 	return !aoi || (p.x >= aoi[0] && p.x - aoi[0] <= aoi[2]
-	             && p.y >= aoi[1] && p.y - aoi[1] <= aoi[3]);
+	             && p.y >= aoi[1] && p.y - aoi[1] <= aoi[3]
+	             && mask[index(p.y-aoi[1], p.x-aoi[0], aoi[2])]);
 };
 
 // Captures mouse clicks and either updates the path, starts a new one, and/or

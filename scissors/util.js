@@ -23,6 +23,11 @@ Point.prototype.index = function(width) {
 	return this.y*width + this.x;
 };
 
+Point.prototype.translate = function(tx, ty) {
+	this.x += tx;
+	this.y += ty;
+};
+
 function index(i, j, width) {
 	return i*width + j;
 }
@@ -40,18 +45,27 @@ function translate(p, tx, ty) {
 }
 
 //Converts absolute coordinates to element coordinates.
-function getRelativePoint (element, x, y) {
-	var p = new Point(0, 0);
+function getRelativePoint(element, x, y) {
+	var p = computeOffset(element);
 	
-	// Compute canvas offset.
-	while (element) {
-		p.x += element.offsetLeft;
-		p.y += element.offsetTop;
-		element = element.offsetParent;
-	}
-
-	p.x = x - p.x + window.pageXOffset;
-	p.y = y - p.y + window.pageYOffset;
+	p.x = x - p.x;
+	p.y = y - p.y;
 
 	return p;
-};
+}
+
+// Computes the absolute offset of an element
+function computeOffset(element) {
+	var x = 0, y = 0;
+	
+	while (element) {
+		x += element.offsetLeft;
+		y += element.offsetTop;
+		element = element.offsetParent;
+	}
+	
+	x -= window.pageXOffset;
+	y -= window.pageYOffset;
+	
+	return new Point(x, y);
+}

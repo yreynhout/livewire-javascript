@@ -35,6 +35,8 @@ this.overStart = false;
 this.imageUrl = null;
 this.img = null;
 
+this.dragScrollSpeed = 1.25;
+
 this.paths = new Array(); // Array of completed paths.
 this.currentPath = new Array(); // Array of subpaths (which are arrays of points)
 // Note: each subpath goes backwards, from the destination to the source.
@@ -158,6 +160,8 @@ this.init = function(img, mask, visualize) {
 	
 	this.scratch_canvas.addEventListener("mousemove", this.mouseMove, false);
 	this.scratch_canvas.addEventListener("mousedown", this.mouseClick, true);
+	this.scratch_canvas.addEventListener("mouseup", this.endDragScrolling, true);
+	this.scratch_canvas.addEventListener("mouseout", this.endDragScrolling, true);
 	this.scratch_canvas.addEventListener("contextmenu", function (event) {
 		event.preventDefault();
 	});
@@ -322,52 +326,70 @@ this.inAoi = function(p) {
 this.mouseClick = function(event) {
 	var p = _this.getCanvasPoint(event.clientX, event.clientY);
 
-	if ( !_this.inAoi(p) ) {
+	if ( event.button == 2 ) { // Right mouse button
+		_this.rightClick(event);
+	} else if ( event.button == 0 ) { // Left mouse button
+		_this.leftClick(event, p);
+	}
+};
+
+this.rightClick = function(event) {
+	if ( this.requiresClosed() && this.isDrawing ) {
+		// close path.
+		this.currentPath.push(_this.getLine(this.start, this.getLastPoint(this.currentPath)));
+		this.stopDrawing();
+		this.redrawPaths();
+	} else if ( !this.requiresClosed() ) {
+		this.startDragScrolling(event);
+	}
+};
+
+this.leftClick = function(event, p) {
+	if ( event.ctrlKey ) {
+		this.startDragScrolling(event);
 		return;
 	}
 	
-	if ( !event.ctrlKey ) {
-		p = _this.snapPoint(p);
+	if ( !this.inAoi(p) ) {
+		return;
 	}
 	
-	if ( event.button == 2 && _this.requiresClosed() && _this.isDrawing ) {
-		// Right mouse button
-		// close path.
-		_this.currentPath.push(_this.getLine(_this.start, _this.getLastPoint(_this.currentPath)));
-		_this.stopDrawing();
-		_this.redrawPaths();
-	} else if ( event.button == 0 ) { // Left mouse button
-		if ( _this.isDrawing && _this.scissorsWorker.hasPathFor(p) ) {
-			// If we're drawing, and the chosen point has it's path calculated
-			// add path to point and continue
-			_this.appendPath(p, _this.currentPath);
-			_this.redrawPaths();
-			
-			_this.scissorsWorker.setPoint(p);
+	if ( !event.altKey ) {
+		p = this.snapPoint(p);
+	}
+	
+	if ( this.isDrawing && this.scissorsWorker.hasPathFor(p) ) {
+		// If we're drawing, and the chosen point has it's path calculated
+		// add path to point and continue
+		this.appendPath(p, this.currentPath);
+		this.redrawPaths();
+		
+		this.scissorsWorker.setPoint(p);
+	}
+	
+	// Stop drawing if the user requests it (and we can), or when the path is
+	// finished
+	if ( (event.shiftKey && this.isDrawing && !this.requiresClosed())
+			|| (this.requiresClosed() && this.isClosed()) ) {
+		this.stopDrawing();
+		this.redrawPaths();
+	} else if ( !this.isDrawing ) {
+		if ( this.requiresClosed() && this.isClosed() ) {
+			window.alert('Path is already closed. Click "Undo" or "Clear Lines" to change the path.');
 		}
 		
-		// Stop drawing if the user requests it (and we can), or when the path is
-		// finished
-		if ( (event.shiftKey && _this.isDrawing && !_this.requiresClosed())
-				|| (_this.requiresClosed() && _this.isClosed()) ) {
-			_this.stopDrawing();
-			_this.redrawPaths();
-		} else if ( !_this.isDrawing ) {
-			if ( _this.requiresClosed() && _this.isClosed() ) {
-				window.alert('Path is already closed. Click "Undo" or "Clear Lines" to change the path.');
-			}
-			
-			// Start drawing new segment
-			_this.drawing(p);
-			_this.drawStart();
-			_this.scissorsWorker.setPoint(p);
-		}
+		// Start drawing new segment
+		this.drawing(p);
+		this.drawStart();
+		this.scissorsWorker.setPoint(p);
 	}
 };
 
 // Captures mouse movement and updates preview paths accordingly 
 this.mouseMove = function(event) {
-	if ( _this.isDrawing ) {
+	if ( _this.dragScrolling ) {
+		_this.updateDragScrolling(event);
+	} else if ( _this.isDrawing ) {
 		var p = _this.getCanvasPoint(event.clientX, event.clientY);
 		
 		if ( !_this.inAoi(p) ) {
@@ -381,6 +403,23 @@ this.mouseMove = function(event) {
 		_this.mousePoint = p;
 		_this.updatePreview();
 	}
+};
+
+this.endDragScrolling = function() {
+	_this.dragScrolling = false;
+};
+
+this.startDragScrolling = function(event) {
+	this.prevDragPoint = new Point(event.screenX, event.screenY);
+	this.dragScrolling = true;
+};
+
+this.updateDragScrolling = function(event) {
+	var tx = this.prevDragPoint.x - event.screenX;
+	var ty = this.prevDragPoint.y - event.screenY;
+	var speed = this.dragScrollSpeed;
+	window.scrollBy(tx * speed, ty * speed);
+	this.prevDragPoint = new Point(event.screenX, event.screenY);
 };
 
 this.updatePreview = function() {

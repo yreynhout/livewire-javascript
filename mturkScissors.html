@@ -5,6 +5,11 @@
 
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 
+<script src="scissors/scissorsClient.js"></script>
+<script src="scissors/scissors.js"></script>
+<script src="scissors/util.js"></script>
+<script src="scissors/maskDrawing.js"></script>
+
 <style>
 body {
 	margin-left: 0;
@@ -16,7 +21,7 @@ body {
 }
 
 #container {
-	padding: 0 3px;
+	margin: 0 3px;
 }
 
 .control-bar {
@@ -54,11 +59,6 @@ body {
 	margin: 0;
 }
 </style>
-
-<script src="scissors/scissorsClient.js"></script>
-<script src="scissors/scissors.js"></script>
-<script src="scissors/point.js"></script>
-<script src="scissors/maskDrawing.js"></script>
 
 <script>
 if (typeof $ == 'undefined') {
@@ -118,7 +118,21 @@ function endMasking() {
 		showControls('scissors-controls');
 		scs = new Scissors();
 		scs.init(image, mask, false);
+		focus(mask);
 	}
+}
+
+function focus(mask) {
+	// Put the AOI on the screen, with some margin
+	
+	// Try to center the AOI, but give the upper-left corner at least a 100px margin
+	var marginLeft = Math.max(100, (window.innerWidth - mask.aoi[2])/2);
+	var marginTop = Math.max(100, (window.innerHeight - mask.aoi[3])/2);
+	
+	var offset = computeOffset(container);
+	var left = Math.max(mask.aoi[0] - marginLeft + offset.x, 0);
+	var top = Math.max(mask.aoi[1] - marginTop + offset.y, 0);
+	window.scrollTo(left, top);
 }
 </script>
 </head>

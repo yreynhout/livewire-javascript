@@ -7,7 +7,7 @@
 if ( this.importScripts != undefined ) {
 	// We're running this script in a Web Worker, so set up environment
 	
-	importScripts("bucketQueue.js", "scissorsServer.js", "point.js");
+	importScripts("bucketQueue.js", "scissorsServer.js", "util.js");
 
 	var scissorsServer = new ScissorsServer(new Scissors()); // Protocol object
 	onmessage = function(event) {

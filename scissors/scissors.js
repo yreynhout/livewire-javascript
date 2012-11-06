@@ -417,8 +417,18 @@ this.startDragScrolling = function(event) {
 this.updateDragScrolling = function(event) {
 	var tx = this.prevDragPoint.x - event.screenX;
 	var ty = this.prevDragPoint.y - event.screenY;
+	
+	txa = Math.abs(tx);
+	tya = Math.abs(ty);
+	if ( (txa < 3 && tya > 5) || (txa * 9 < tya) ) {
+		tx = 0;
+	} else if ( (tya < 3 && txa > 5) || (tya * 9 < txa) ) {
+		ty = 0;
+	}
+
 	var speed = this.dragScrollSpeed;
 	window.scrollBy(tx * speed, ty * speed);
+	console.log([tx, ty]);
 	this.prevDragPoint = new Point(event.screenX, event.screenY);
 };
 

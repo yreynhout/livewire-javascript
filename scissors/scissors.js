@@ -418,6 +418,7 @@ this.updateDragScrolling = function(event) {
 	var tx = this.prevDragPoint.x - event.screenX;
 	var ty = this.prevDragPoint.y - event.screenY;
 	
+	// Prefer axis-aligned movement to reduce apparent jitteriness
 	txa = Math.abs(tx);
 	tya = Math.abs(ty);
 	if ( (txa < 3 && tya > 5) || (txa * 9 < tya) ) {

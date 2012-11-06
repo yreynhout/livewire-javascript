@@ -100,21 +100,13 @@ Masker.prototype.newCanvas = function(width, height) {
 };
 
 Masker.prototype.registerListeners = function() {
-	var _this = this;
-	this.canvas.addEventListener("mousedown", function(event) {
-		_this.mouseDown(event);
-	});
-	
+	this.canvas.addEventListener("mousedown", wrapHandler(this, this.mouseDown));
 	this.addGlobalListener("mouseup", this.mouseUp);
 	this.addGlobalListener("mousemove", this.mouseMove);
 };
 
 Masker.prototype.addGlobalListener = function(type, listener, bubble) {
-	var _this = this;
-	var wrapper = function(event) {
-		// Call method on this instance, with correct this reference
-		listener.apply(_this, [event]);
-	};
+	var wrapper = wrapHandler(this, listener);
 	wrapper.type = type;
 	wrapper.bubble = bubble;
 	

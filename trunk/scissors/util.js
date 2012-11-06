@@ -69,3 +69,10 @@ function computeOffset(element) {
 	
 	return new Point(x, y);
 }
+
+function wrapHandler(_this, handler) {
+	// Wraps the supplied handler so that it has an appropriate "this" reference.
+	return function(event) {
+		handler.apply(_this, [event]);
+	};
+}

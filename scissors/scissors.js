@@ -1,48 +1,45 @@
 // Created: A while ago
 
 function Scissors() {
-
-// Member variables
-var _this = this; // For event functions.
-
-this.lineColor = "red"; //new Array(255, 0, 0, 255);
-this.fadeColor = "white";
-this.fadeAlpha = 0.5;
-
-this.output = null; // Element to stick output text
-
-this.image_canvas = null; // Canvas for drawing image
-this.line_canvas = null; // Canvas for drawing commited lines
-this.scratch_canvas = null; // Canvas for drawing preview lines
-
-this.image_ctx = null;
-this.line_ctx = null;
-this.scratch_ctx = null;
-
-this.scissorsWorker = null;
-this.trainCheck = null;
-
-this.mousePoint = null;
-this.exampleLineDrawn = false;
-
-this.isDrawing = false;
-
-this.snapSize = 2;
-this.startPointSize = 4;
-this.start = null;
-this.overStart = false;
-
-this.imageUrl = null;
-this.img = null;
-
-this.dragScrollSpeed = 1.25;
-
-this.paths = new Array(); // Array of completed paths.
-this.currentPath = new Array(); // Array of subpaths (which are arrays of points)
-// Note: each subpath goes backwards, from the destination to the source.
+	this.lineColor = "red"; //new Array(255, 0, 0, 255);
+	this.fadeColor = "white";
+	this.fadeAlpha = 0.5;
+	
+	this.output = null; // Element to stick output text
+	
+	this.image_canvas = null; // Canvas for drawing image
+	this.line_canvas = null; // Canvas for drawing commited lines
+	this.scratch_canvas = null; // Canvas for drawing preview lines
+	
+	this.image_ctx = null;
+	this.line_ctx = null;
+	this.scratch_ctx = null;
+	
+	this.scissorsWorker = null;
+	this.trainCheck = null;
+	
+	this.mousePoint = null;
+	this.exampleLineDrawn = false;
+	
+	this.isDrawing = false;
+	
+	this.snapSize = 2;
+	this.startPointSize = 4;
+	this.start = null;
+	this.overStart = false;
+	
+	this.imageUrl = null;
+	this.img = null;
+	
+	this.dragScrollSpeed = 1.25;
+	
+	this.paths = new Array(); // Array of completed paths.
+	this.currentPath = new Array(); // Array of subpaths (which are arrays of points)
+	// Note: each subpath goes backwards, from the destination to the source.
+}
 
 // Creates a new canvas element and adds it to the DOM
-this.createCanvas = function(id, zIndex) {
+Scissors.prototype.createCanvas = function(id, zIndex) {
 	var imageNode = this.img;
 
 	var canvas = document.createElement("canvas");
@@ -66,13 +63,13 @@ this.createCanvas = function(id, zIndex) {
 };
 
 // Converts absolute coordinates to canvas coordinates.
-this.getCanvasPoint = function(x, y) {
+Scissors.prototype.getCanvasPoint = function(x, y) {
 	return getRelativePoint(this.image_canvas, x, y);
 };
 
 // Initializes everything, creates all of the canvases, and starts the Web
 // Workers.
-this.init = function(img, mask, visualize) {
+Scissors.prototype.init = function(img, mask, visualize) {
 	this.img = img;
 	
 	this.trainCheck = document.getElementById("trainCheck");
@@ -96,57 +93,20 @@ this.init = function(img, mask, visualize) {
 	
 	this.scissorsWorker = new ScissorsWorker("scissors/scissorsWorker.js");
 
-	this.scissorsWorker.onstatus = function(msg) {
-		_this.output.textContent = msg;
-	};
-
-	var drawFromPoint = null;
-	var drawData = null;
+	this.drawFromPoint = null;
+	this.drawData = null;
+	
+	this.visualize = visualize;
 	if ( visualize ) {
 		this.line_ctx.strokeRect(mask.aoi[0], mask.aoi[1], mask.aoi[2], mask.aoi[3]);
 	}
-	
-	this.scissorsWorker.ondata = function(data) {
-		if ( _this.isDrawing && !_this.exampleLineDrawn && _this.mousePoint ) {
-			// If we haven't drawn the path to the current mouse point...
-			
-			// ...and we can draw that path.
-			if ( _this.scissorsWorker.hasPathFor(_this.mousePoint) ) {
-				// Draw it!
-				_this.updatePreview();
-			}
-		}
-		
-		if ( visualize ) {
-			if (drawFromPoint != this.curPoint) {
-				drawData = _this.line_ctx.getImageData(0,0, _this.image_canvas.width, _this.image_canvas.height);
-				drawFromPoint = this.curPoint;
-			}
-			
-			for ( var i = 0; i < data.length; i += 2 ) {
-				q = data[i+1];
-	
-				if ( !q ) {
-					continue;
-				}
-				
-				idx = (q.y*drawData.width + q.x) * 4;
-				
-				drawData.data[idx] = 255;
-				drawData.data[idx+1] = 0;
-				drawData.data[idx+2] = 255;
-				drawData.data[idx+3] = 255;
-			}
-			_this.line_ctx.putImageData(drawData, 0, 0);
-		}
-	};
-	
-	this.scissorsWorker.onerror = function(event){
-		output.textContent = event.message;
-		
-		throw new Error(event.message + " (" + event.filename + ":" + event.lineno + ")");
-	};
-	
+
+	// wrapHandler is a function in util.js that makes sure the handler is called with the
+	// appropriate "this" reference.
+	this.scissorsWorker.ondata = wrapHandler(this, this.onData);
+	this.scissorsWorker.onerror = wrapHandler(this, this.onError);
+	this.scissorsWorker.onstatus = wrapHandler(this, this.onStatus);
+
 	if ( mask ) {
 		this.mask = mask.points;
 		this.aoi = mask.aoi;
@@ -158,16 +118,61 @@ this.init = function(img, mask, visualize) {
 		this.fadeImage(mask.image);
 	}
 	
-	this.scratch_canvas.addEventListener("mousemove", this.mouseMove, false);
-	this.scratch_canvas.addEventListener("mousedown", this.mouseClick, true);
-	this.scratch_canvas.addEventListener("mouseup", this.endDragScrolling, true);
-	this.scratch_canvas.addEventListener("mouseout", this.endDragScrolling, true);
+	this.scratch_canvas.addEventListener("mousemove", wrapHandler(this, this.mouseMove), false);
+	this.scratch_canvas.addEventListener("mousedown", wrapHandler(this, this.mouseClick), true);
+	this.scratch_canvas.addEventListener("mouseup", wrapHandler(this, this.endDragScrolling), true);
+	this.scratch_canvas.addEventListener("mouseout", wrapHandler(this, this.endDragScrolling), true);
 	this.scratch_canvas.addEventListener("contextmenu", function (event) {
 		event.preventDefault();
 	});
 };
 
-this.fadeImage = function(image) {
+Scissors.prototype.onData = function(data) {
+	if ( this.isDrawing && !this.exampleLineDrawn && this.mousePoint ) {
+		// If we haven't drawn the path to the current mouse point...
+		
+		// ...and we can draw that path.
+		if ( this.scissorsWorker.hasPathFor(this.mousePoint) ) {
+			// Draw it!
+			this.updatePreview();
+		}
+	}
+	
+	if ( this.visualize ) {
+		if (this.drawFromPoint != this.scissorsWorker.curPoint) {
+			this.drawData = this.line_ctx.getImageData(0,0, this.image_canvas.width, this.image_canvas.height);
+			this.drawFromPoint = this.scissorsWorker.curPoint;
+		}
+		
+		var drawData = this.drawData;
+		for ( var i = 0; i < data.length; i += 2 ) {
+			q = data[i+1];
+
+			if ( !q ) {
+				continue;
+			}
+			
+			idx = (q.y*drawData.width + q.x) * 4;
+			
+			drawData.data[idx] = 255;
+			drawData.data[idx+1] = 0;
+			drawData.data[idx+2] = 255;
+			drawData.data[idx+3] = 255;
+		}
+		this.line_ctx.putImageData(drawData, 0, 0);
+	}
+};
+
+Scissors.prototype.onError = function(event){
+	this.output.textContent = event.message;
+	throw new Error(event.message + " (" + event.filename + ":" + event.lineno + ")");
+};
+
+Scissors.prototype.onStatus = function(msg) {
+	this.output.textContent = msg;
+};
+
+Scissors.prototype.fadeImage = function(image) {
 	var aoi = this.aoi;
 	var fade = this.createCanvas("tempFade", -100);
 	fadeCtx = fade.getContext('2d');
@@ -186,7 +191,7 @@ this.fadeImage = function(image) {
 	fade.parentNode.removeChild(fade);
 };
 
-this.destroy = function() {
+Scissors.prototype.destroy = function() {
 	var container = this.img.parentNode;
 	var children = container.childNodes;
 	var idx = 0;
@@ -202,7 +207,7 @@ this.destroy = function() {
 };
 
 // Aborts the current computation and stops showing potential paths
-this.stopDrawing = function() {
+Scissors.prototype.stopDrawing = function() {
 	this.isDrawing = false;
 	this.scissorsWorker.stop();
 	this.scissorsWorker.resetTraining();
@@ -217,13 +222,13 @@ this.stopDrawing = function() {
 };
 
 // Puts this object in the drawing state
-this.drawing = function(p) {
+Scissors.prototype.drawing = function(p) {
 	this.isDrawing = true;
 	this.start = p;
 };
 
 // Deletes all of the saved lines so far
-this.clearLines = function() {
+Scissors.prototype.clearLines = function() {
 	this.stopDrawing();
 	this.paths = new Array(); // Clear stored paths
 	this.line_ctx.clearRect(0, 0, this.line_canvas.width, this.line_canvas.height);
@@ -233,13 +238,13 @@ this.clearLines = function() {
 
 // Updates whether the algorithm should do live training, according to the
 // trainCheck's value
-this.setTraining = function() {
+Scissors.prototype.setTraining = function() {
 	this.scissorsWorker.setTraining(this.trainCheck.value);
 };
 
 // Returns true if the last path saved is closed (i.e., its last point is
 // equal to its first).
-this.isClosed = function() {
+Scissors.prototype.isClosed = function() {
 	// Closed attribute of most recent path, if any
 	if ( this.isDrawing ) {
 		return this.isPathClosed(this.currentPath);
@@ -251,40 +256,40 @@ this.isClosed = function() {
 };
 
 // Returns whether the supplied path is closed
-this.isPathClosed = function(path) {
+Scissors.prototype.isPathClosed = function(path) {
 	return path.length > 0
 		&& this.getFirstPoint(path).equals(this.getLastPoint(path));
 };
 
 // Set to true, and the algorithm will not allow the user to submit without
 // drawing a closed path, or add a new path once one is closed
-this.setRequiresClosed = function(req) {
+Scissors.prototype.setRequiresClosed = function(req) {
 	this.reqClosed = req;
 };
 
-this.requiresClosed = function() {
+Scissors.prototype.requiresClosed = function() {
 	return this.reqClosed;
 };
 
 // Returns true if the supplied point is considered to be over the start point
 // of the current path
-this.isOverStart = function(p) {
+Scissors.prototype.isOverStart = function(p) {
 	return this.start && this.start.dist(p) < this.startPointSize;
 };
 
 // Returns the last point in the supplied path (array of subpaths)
-this.getLastPoint = function(path) {
+Scissors.prototype.getLastPoint = function(path) {
 	return path[path.length-1][0];
 };
 
 // Returns the first point in the supplied path (array of subpaths)
-this.getFirstPoint = function(path) {
+Scissors.prototype.getFirstPoint = function(path) {
 	return path[0][path[0].length-1];
 };
 
 // Attempts to snap the supplied point to either the starting point or a point
 // with high gradient magnitude.
-this.snapPoint = function(p) {
+Scissors.prototype.snapPoint = function(p) {
 	if ( this.requiresClosed() && this.isOverStart(p) ) {
 		return this.start; // We're close enough to snap to start
 	}
@@ -313,7 +318,7 @@ this.snapPoint = function(p) {
 	return maxPoint;
 };
 
-this.inAoi = function(p) {
+Scissors.prototype.inAoi = function(p) {
 	var aoi = this.aoi;
 	var mask = this.mask;
 	return !aoi || (p.x >= aoi[0] && p.x - aoi[0] <= aoi[2]
@@ -323,17 +328,17 @@ this.inAoi = function(p) {
 
 // Captures mouse clicks and either updates the path, starts a new one, and/or
 // finishes the current one.
-this.mouseClick = function(event) {
-	var p = _this.getCanvasPoint(event.clientX, event.clientY);
+Scissors.prototype.mouseClick = function(event) {
+	var p = this.getCanvasPoint(event.clientX, event.clientY);
 
 	if ( event.button == 2 ) { // Right mouse button
-		_this.rightClick(event);
+		this.rightClick(event);
 	} else if ( event.button == 0 ) { // Left mouse button
-		_this.leftClick(event, p);
+		this.leftClick(event, p);
 	}
 };
 
-this.rightClick = function(event) {
+Scissors.prototype.rightClick = function(event) {
 	if ( this.requiresClosed() && this.isDrawing ) {
 		// close path.
 		this.currentPath.push(_this.getLine(this.start, this.getLastPoint(this.currentPath)));
@@ -344,7 +349,7 @@ this.rightClick = function(event) {
 	}
 };
 
-this.leftClick = function(event, p) {
+Scissors.prototype.leftClick = function(event, p) {
 	if ( event.ctrlKey ) {
 		this.startDragScrolling(event);
 		return;
@@ -386,35 +391,35 @@ this.leftClick = function(event, p) {
 };
 
 // Captures mouse movement and updates preview paths accordingly 
-this.mouseMove = function(event) {
-	if ( _this.dragScrolling ) {
-		_this.updateDragScrolling(event);
-	} else if ( _this.isDrawing ) {
-		var p = _this.getCanvasPoint(event.clientX, event.clientY);
+Scissors.prototype.mouseMove = function(event) {
+	if ( this.dragScrolling ) {
+		this.updateDragScrolling(event);
+	} else if ( this.isDrawing ) {
+		var p = this.getCanvasPoint(event.clientX, event.clientY);
 		
-		if ( !_this.inAoi(p) ) {
+		if ( !this.inAoi(p) ) {
 			return;
 		}
 		
 		if ( !event.ctrlKey ) {
-			p = _this.snapPoint(p);
+			p = this.snapPoint(p);
 		}
 		
-		_this.mousePoint = p;
-		_this.updatePreview();
+		this.mousePoint = p;
+		this.updatePreview();
 	}
 };
 
-this.endDragScrolling = function() {
-	_this.dragScrolling = false;
+Scissors.prototype.endDragScrolling = function() {
+	this.dragScrolling = false;
 };
 
-this.startDragScrolling = function(event) {
+Scissors.prototype.startDragScrolling = function(event) {
 	this.prevDragPoint = new Point(event.screenX, event.screenY);
 	this.dragScrolling = true;
 };
 
-this.updateDragScrolling = function(event) {
+Scissors.prototype.updateDragScrolling = function(event) {
 	var tx = this.prevDragPoint.x - event.screenX;
 	var ty = this.prevDragPoint.y - event.screenY;
 	
@@ -429,23 +434,22 @@ this.updateDragScrolling = function(event) {
 
 	var speed = this.dragScrollSpeed;
 	window.scrollBy(tx * speed, ty * speed);
-	console.log([tx, ty]);
 	this.prevDragPoint = new Point(event.screenX, event.screenY);
 };
 
-this.updatePreview = function() {
-	this.exampleLineDrawn = _this.scissorsWorker.hasPathFor(_this.mousePoint);
+Scissors.prototype.updatePreview = function() {
+	this.exampleLineDrawn = this.scissorsWorker.hasPathFor(this.mousePoint);
 	
-	_this.scratch_ctx.clearRect(0, 0, _this.scratch_canvas.width, _this.scratch_canvas.height);
-	this.drawPathFrom(this.mousePoint, _this.scratch_ctx);
+	this.scratch_ctx.clearRect(0, 0, this.scratch_canvas.width, this.scratch_canvas.height);
+	this.drawPathFrom(this.mousePoint, this.scratch_ctx);
 	
-	this.overStart = _this.isOverStart(this.mousePoint);
+	this.overStart = this.isOverStart(this.mousePoint);
 	this.drawStart();
 };
 
 //Draws a line from the supplied point to the start point onto the supplied
 //context.
-this.drawPathFrom = function(p, imageCtx) {
+Scissors.prototype.drawPathFrom = function(p, imageCtx) {
 	var subpath = this.scissorsWorker.getPathFrom(p);
 	
 	if (subpath.length < 2) {
@@ -462,7 +466,7 @@ this.drawPathFrom = function(p, imageCtx) {
 };
 
 // Draws the supplied path onto the context.
-this.drawPath = function(path, imageCtx) {
+Scissors.prototype.drawPath = function(path, imageCtx) {
 	imageCtx.strokeStyle = this.lineColor;
 	
 	for ( var i = 0; i < path.length; i++ ) { // Iterate over subpaths
@@ -477,7 +481,7 @@ this.drawPath = function(path, imageCtx) {
 };
 
 // Draws a circle representing the starting point of the current path.
-this.drawStart = function() {
+Scissors.prototype.drawStart = function() {
 	if ( this.start && this.requiresClosed() ) {
 		this.line_ctx.beginPath();
 		this.line_ctx.arc(this.start.x, this.start.y, this.startPointSize, 0, 2*Math.PI);
@@ -488,14 +492,14 @@ this.drawStart = function() {
 
 // Appends the subpath from the supplied point to the previous clicked point to
 // the supplied path array
-this.appendPath = function(p, path) {
+Scissors.prototype.appendPath = function(p, path) {
 	subpath = this.scissorsWorker.getPathFrom(p);
 	path.push(subpath);
 };
 
 // Bresenham's algorithm for constructing a straight line between two points.
 // Thank you, Phrogz, from StackOverflow.
-this.getLine = function(p, q) {
+Scissors.prototype.getLine = function(p, q) {
 	var line = new Array();
 	
 	// For faster access
@@ -531,7 +535,7 @@ this.getLine = function(p, q) {
 };
 
 // Undoes the previously commited line
-this.undo = function() {
+Scissors.prototype.undo = function() {
 	// Remove last path component and redraw
 	if ( this.isDrawing && this.currentPath.length == 0 ) {
 		this.stopDrawing();
@@ -557,7 +561,7 @@ this.undo = function() {
 };
 
 // Redraws everything except the image canvas
-this.redrawPaths = function() {
+Scissors.prototype.redrawPaths = function() {
 	// Clear canvas
 	var line_ctx = this.line_ctx;
 	line_ctx.clearRect(0, 0, this.line_canvas.width, this.line_canvas.height);
@@ -576,7 +580,7 @@ this.redrawPaths = function() {
 };
 
 // Completely replaces the paths array
-this.setPaths = function(paths) {
+Scissors.prototype.setPaths = function(paths) {
 	this.stopDrawing();
 	this.paths = paths;
 	this.redrawPaths();
@@ -584,7 +588,7 @@ this.setPaths = function(paths) {
 
 // Attempts to encode the current paths array and add it to the scissors_form
 // form object.
-this.submitScissors = function() {
+Scissors.prototype.submitScissors = function() {
 	if ( this.requiresClosed() && !this.isClosed() ) {
 		window.alert("Outline must form a complete loop, which it currently doesn't.");
 		return false; // Cancel submission
@@ -601,7 +605,5 @@ this.submitScissors = function() {
 	form.appendChild(pathInput);
 	return true;
 };
-
-}
 
 

@@ -415,18 +415,16 @@ Scissors.prototype.setData = function(greyscale, mask) {
 	this.status(PROCESSING_STR + " 4/6");
 	this.gradY = this.computeGradY();
 	this.status(PROCESSING_STR + " 5/6");
-	//this.gradDir = computeGradDirection(this.gradX, this.gradY);
-	//this.status(PROCESSING_STR + " 6/7");
 	
 	if ( this.width * this.height <= MAX_IMAGE_SIZE_FOR_TRAINING ) {
 		var sides = this.computeSides();
-		this.status(PROCESSING_STR + " 7/6");
+		this.status(PROCESSING_STR + " 6/6");
 		this.inside = sides.inside;
 		this.outside = sides.outside;
-		this.edgeTraining = new Float32Array();
-		this.gradTraining = new Float32Array();
-		this.insideTraining = new Float32Array();
-		this.outsideTraining = new Float32Array();
+		this.edgeTraining = new Float32Array(this.edgeGran);
+		this.gradTraining = new Float32Array(this.gradGran);
+		this.insideTraining = new Float32Array(this.insideGran);
+		this.outsideTraining = new Float32Array(this.outsideGran);
 	}
 };
 

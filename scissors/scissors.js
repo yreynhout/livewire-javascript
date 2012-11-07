@@ -2,7 +2,7 @@
 
 function Scissors() {
 	this.lineColor = "red"; //new Array(255, 0, 0, 255);
-	this.fadeColor = "white";
+	this.fadeColor = "black";
 	this.fadeAlpha = 0.5;
 	
 	this.output = null; // Element to stick output text
@@ -18,7 +18,7 @@ function Scissors() {
 	this.scissorsWorker = null;
 	this.trainCheck = null;
 	
-	this.mousePoint = null;
+	this.mousePoint = new Point(0, 0);
 	this.exampleLineDrawn = false;
 	
 	this.isDrawing = false;
@@ -31,6 +31,7 @@ function Scissors() {
 	this.imageUrl = null;
 	this.img = null;
 	
+	this.dragScrolling = false;
 	this.dragScrollSpeed = 1.25;
 	
 	this.paths = new Array(); // Array of completed paths.
@@ -120,11 +121,19 @@ Scissors.prototype.init = function(img, mask, visualize) {
 	
 	this.scratch_canvas.addEventListener("mousemove", wrapHandler(this, this.mouseMove), false);
 	this.scratch_canvas.addEventListener("mousedown", wrapHandler(this, this.mouseClick), true);
-	this.scratch_canvas.addEventListener("mouseup", wrapHandler(this, this.endDragScrolling), true);
+	this.scratch_canvas.addEventListener("mouseup", wrapHandler(this, this.mouseUp), true);
 	this.scratch_canvas.addEventListener("mouseout", wrapHandler(this, this.endDragScrolling), true);
 	this.scratch_canvas.addEventListener("contextmenu", function (event) {
 		event.preventDefault();
 	});
+	
+	var updateCursor = wrapHandler(this, this.updateCursor);
+	this.updateCursorHandler = updateCursor;
+	this.scratch_canvas.addEventListener("mouseover", updateCursor, true);
+	
+	var body = document.getElementsByTagName('body')[0];
+	body.addEventListener("keydown", updateCursor, true);
+	body.addEventListener("keyup", updateCursor, true);
 };
 
 Scissors.prototype.onData = function(data) {
@@ -170,6 +179,7 @@ Scissors.prototype.onError = function(event){
 
 Scissors.prototype.onStatus = function(msg) {
 	this.output.textContent = msg;
+	this.updateCursor(msg);
 };
 
 Scissors.prototype.fadeImage = function(image) {
@@ -202,6 +212,10 @@ Scissors.prototype.destroy = function() {
 			idx++;
 		}
 	}
+	
+	var body = document.getElementsByTagName('body')[0];
+	body.removeEventListener('keydown', this.updateCursorHandler);
+	body.removeEventListener('keyup', this.updateCursorHandler);
 	
 	this.scissorsWorker.destroy();
 };
@@ -336,6 +350,9 @@ Scissors.prototype.mouseClick = function(event) {
 	} else if ( event.button == 0 ) { // Left mouse button
 		this.leftClick(event, p);
 	}
+	
+	this.updateCursor(event);
+	event.preventDefault();
 };
 
 Scissors.prototype.rightClick = function(event) {
@@ -390,24 +407,27 @@ Scissors.prototype.leftClick = function(event, p) {
 	}
 };
 
+Scissors.prototype.mouseUp = function(event) {
+	this.endDragScrolling();
+	this.updateCursor(event);
+};
+
 // Captures mouse movement and updates preview paths accordingly 
 Scissors.prototype.mouseMove = function(event) {
+	var p = this.getCanvasPoint(event.clientX, event.clientY);
+	
 	if ( this.dragScrolling ) {
 		this.updateDragScrolling(event);
-	} else if ( this.isDrawing ) {
-		var p = this.getCanvasPoint(event.clientX, event.clientY);
-		
-		if ( !this.inAoi(p) ) {
-			return;
-		}
-		
+	} else if ( this.isDrawing && this.inAoi(p)  ) {
 		if ( !event.ctrlKey ) {
 			p = this.snapPoint(p);
 		}
 		
-		this.mousePoint = p;
 		this.updatePreview();
 	}
+
+	this.mousePoint = p;
+	this.updateCursor(event);
 };
 
 Scissors.prototype.endDragScrolling = function() {
@@ -584,6 +604,24 @@ Scissors.prototype.setPaths = function(paths) {
 	this.stopDrawing();
 	this.paths = paths;
 	this.redrawPaths();
+};
+
+Scissors.prototype.updateCursor = function(event) {
+	var target = this.scratch_canvas.style;
+	
+	if ( this.dragScrolling || event.ctrlKey ) {
+		target.cursor = 'move'; // Drag scrolling
+	} else if ( !this.scissorsWorker.initialProcessingDone() ) {
+		target.cursor = 'wait'; // Processing
+	} else if ( this.inAoi(this.mousePoint)) {
+		if ( this.isDrawing && event.shiftKey ) {
+			target.cursor = 'pointer'; // End path
+		} else {
+			target.cursor = 'crosshair'; // Normal point picking
+		}
+	} else {
+		target.cursor = 'default';
+	}
 };
 
 // Attempts to encode the current paths array and add it to the scissors_form

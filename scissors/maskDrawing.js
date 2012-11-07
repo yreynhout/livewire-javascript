@@ -75,6 +75,7 @@ Masker.prototype.constructCanvases = function(container) {
 	style.position = "absolute";
 	style.top = "0px";
 	style.left = "0px";
+	style.cursor = "pointer";
 	container.appendChild(canvas);
 	
 	this.canvas = canvas;

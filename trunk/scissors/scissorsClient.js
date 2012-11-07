@@ -58,6 +58,10 @@ ScissorsWorker.prototype.destroy = function() {
 	this.worker.terminate();
 };
 
+ScissorsWorker.prototype.initialProcessingDone = function() {
+	return this.gradient != null;
+};
+
 ScissorsWorker.prototype.toWorkerSpace = function(p) {
 	return translate(p, -this.aoi[0], -this.aoi[1]);
 };
@@ -69,7 +73,6 @@ ScissorsWorker.prototype.toImageSpace = function(p) {
 ScissorsWorker.prototype.setTraining = function(train) {
 	this._postTrainMessage(train);
 };
-
 
 ScissorsWorker.prototype.computeGreyscale = function(data) {
 	// Returns 2D augmented array containing greyscale data
@@ -104,6 +107,7 @@ ScissorsWorker.prototype.setImageData = function(image, aoi, mask) {
 	
 	this.width = aoi[2];
 	this.height = aoi[3];
+	this.gradient = null;
 	this._postImageMessage(grey, mask);
 };
 
@@ -184,7 +188,7 @@ ScissorsWorker.prototype.postMessage = function(event) {
 };
 
 ScissorsWorker.prototype._resetParentPoints = function() {
-	this.parentPoints = new Array();
+	this.parentPoints = new Uint32Array(this.width * this.height);
 };
 
 ScissorsWorker.prototype._processMessage = function(event) {

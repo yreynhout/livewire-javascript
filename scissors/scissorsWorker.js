@@ -406,19 +406,19 @@ Scissors.prototype.setData = function(greyscale, mask) {
 	this.mask = mask;
 	this.greyscale = greyscale;
 
-	this.status(PROCESSING_STR + " 1/6");
+	this.status(PREPROCESSING_STR + " 1/6");
 	this.laplace = this.computeLaplace();
-	this.status(PROCESSING_STR + " 2/6");
+	this.status(PREPROCESSING_STR + " 2/6");
 	this.gradient = this.computeGradient();
-	this.status(PROCESSING_STR + " 3/6");
+	this.status(PREPROCESSING_STR + " 3/6");
 	this.gradX = this.computeGradX();
-	this.status(PROCESSING_STR + " 4/6");
+	this.status(PREPROCESSING_STR + " 4/6");
 	this.gradY = this.computeGradY();
-	this.status(PROCESSING_STR + " 5/6");
+	this.status(PREPROCESSING_STR + " 5/6");
 	
 	if ( this.width * this.height <= MAX_IMAGE_SIZE_FOR_TRAINING ) {
 		var sides = this.computeSides();
-		this.status(PROCESSING_STR + " 6/6");
+		this.status(PREPROCESSING_STR + " 6/6");
 		this.inside = sides.inside;
 		this.outside = sides.outside;
 		this.edgeTraining = new Float32Array(this.edgeGran);

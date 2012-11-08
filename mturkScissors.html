@@ -103,25 +103,28 @@ function startMasking() {
 	setMaskingButtonsDisabled(false);
 	showControls('masker-controls');
 	hideControls('scissors-controls');
+	$('output').innerHTML = 'Please draw a mask covering the desired edges.'
 }
 
 function endMasking() {
-	$('output').innerHTML = 'Calculating mask...'
+	$('output').innerHTML = 'Calculating the mask. Please wait...'
 	setMaskingButtonsDisabled(true);
 	
-	mask = masker.getMask();
-	
-	if ( !mask ) {
-		$('output').innerHTML = "You need to mark some pixels"
-		setMaskingButtonsDisabled(false);
-	} else {
-		masker.tearDown();
-		hideControls('masker-controls');
-		showControls('scissors-controls');
-		scs = new Scissors();
-		scs.init(image, mask, false);
-		focus(mask);
-	}
+	setTimeout(function() {
+		mask = masker.getMask();
+		
+		if ( !mask ) {
+			$('output').innerHTML = 'The mask is empty. Please add something to the mask.';
+			setMaskingButtonsDisabled(false);
+		} else {
+			masker.tearDown();
+			hideControls('masker-controls');
+			showControls('scissors-controls');
+			scs = new Scissors();
+			scs.init(image, mask, false);
+			focus(mask);
+		}
+	}, 10);
 }
 
 function focus(mask) {
@@ -176,7 +179,7 @@ function focus(mask) {
 	</span>
 	<span class="status">
 	    Status:
-	    <output id="output">Draw Mask</output>
+	    <output id="output"></output>
 	</span>
 	
 	<h3 class="title">Intelligent Scissors</h3>

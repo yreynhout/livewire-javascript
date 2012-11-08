@@ -51,6 +51,7 @@ function getRelativePoint(element, x, y) {
 	p.x = x - p.x;
 	p.y = y - p.y;
 
+	// Eclipse has a nonsensical type warning here for some reason. Can't figure out why.
 	return p;
 }
 

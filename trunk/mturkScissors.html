@@ -169,7 +169,8 @@ function focus(mask) {
 	<span id="scissors-controls" class="controls-hidden">
 		<input type="button" onclick="scs.stopDrawing()" value="Stop Drawing"/>
 		<input type="button" onclick="scs.clearLines()" value="Clear Lines"/>
-		<input type="button" onclick="scs.undo()" value="Undo"/>
+		<input type="button" onclick="scs.undo()" value="Undo"/> &mdash;
+		<input type="button" onclick="startMasking()" value="Retry Masking"/> &mdash;
 		<!--
 			Algorithm output will be added to the form with this id on a call to
 			scs.submitScissors(). add other input fields (hidden or otherwise) as
@@ -179,7 +180,6 @@ function focus(mask) {
 			<input type="submit" value="Submit" />
 		</form>
 		
-		&mdash; <input type="button" onclick="startMasking()" value="Retry Masking"/>
 	</span>
 	<span class="status">
 	    <output id="output"></output>

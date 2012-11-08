@@ -83,6 +83,8 @@ Scissors.prototype.init = function(img, mask, visualize) {
 	this.line_ctx = this.line_canvas.getContext("2d");
 	this.scratch_ctx = this.scratch_canvas.getContext("2d");
 	
+	this.image_canvas.style.position = 'static'; // So Scissors takes up space.
+	
 	this.image_canvas.width = this.img.naturalWidth;
 	this.image_canvas.height = this.img.naturalHeight;
 	this.line_canvas.width = this.image_canvas.width;

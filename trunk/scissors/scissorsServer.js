@@ -1,11 +1,11 @@
 
-var PROCESSING_STR = "Processing...";
-var READY_STR = "Ready!";
-var SEARCH_SIZE_STR = "Search size =";
-var TRAINING_STR = "Training...";
-var STOPPED_STR = "Stopped";
-var TRAINING_TRUE_STR = "Will train";
-var TRAINING_FALSE_STR = "Won't train";
+var PREPROCESSING_STR = "Preprocessing image. Please wait...";
+var PROCESSING_STR = "Mapping out edges. Feel free to choose an edge.";
+var READY_STR = "Processing complete. Feel free to start or continue your edge.";
+var TRAINING_STR = "Training. Please wait...";
+var STOPPED_STR = "Processing stopped. Click somewhere to begin a new edge.";
+var TRAINING_TRUE_STR = "Will adapt edge detection.";
+var TRAINING_FALSE_STR = "Won't adapt edge detection.";
 
 function Message(msgType) {
 	this.msgType = msgType;
@@ -100,7 +100,7 @@ ScissorsServer.prototype._processDimensionMessage = function(data) {
 
 ScissorsServer.prototype._processImageMessage = function(data) {
 	this._processDimensionMessage(data);
-	this.status(PROCESSING_STR);
+	this.status(PREPROCESSING_STR);
 	this.setWorking(true);
 	this.scissors.setData(data.imageData, data.mask);
 	this.setWorking(false);

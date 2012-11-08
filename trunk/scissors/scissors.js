@@ -386,7 +386,6 @@ Scissors.prototype.leftClick = function(event, p) {
 		this.appendPath(p, this.currentPath);
 		this.redrawPaths();
 		
-		this.scissorsWorker.setPoint(p);
 	}
 	
 	// Stop drawing if the user requests it (and we can), or when the path is
@@ -403,6 +402,9 @@ Scissors.prototype.leftClick = function(event, p) {
 		// Start drawing new segment
 		this.drawing(p);
 		this.drawStart();
+		this.scissorsWorker.setPoint(p);
+	} else {
+		// We're continuing a edge as normal.
 		this.scissorsWorker.setPoint(p);
 	}
 };
